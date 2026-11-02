@@ -28,7 +28,24 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 TOKEN_FILE = HERE / ".tokens" / "token.json"
-DEFAULT_CLIENT_SECRET = HERE / "client_secret.json"
+
+
+def _resolve_default_client_secret() -> Path:
+    direct = HERE / "client_secret.json"
+    if direct.exists():
+        return direct
+    secret_dir = HERE / "google_auth_secret"
+    if secret_dir.is_dir():
+        matches = sorted(secret_dir.glob("client_secret*.json"))
+        if matches:
+            return matches[0]
+    root_matches = sorted(HERE.glob("client_secret*.json"))
+    if root_matches:
+        return root_matches[0]
+    return direct
+
+
+DEFAULT_CLIENT_SECRET = _resolve_default_client_secret()
 CACHE_FILE = HERE / "channel_snapshot.json"
 REPORT_FILE = HERE / "report.html"
 TEMPLATE_FILE = HERE / "report_template.html"
@@ -209,7 +226,11 @@ def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any
 # Authenticated OAuth2 YouTube Data v3 + YouTube Analytics v2 Mode
 # ---------------------------------------------------------------------------
 
-def get_oauth_credentials(client_secret_path: Path = DEFAULT_CLIENT_SECRET, upload_scope: bool = False):
+def get_oauth_credentials(
+    client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+    upload_scope: bool = False,
+    force_reauth: bool = False,
+):
     """Load cached OAuth2 token or launch local browser flow if client_secret.json exists."""
     try:
         from google.auth.transport.requests import Request
@@ -224,11 +245,11 @@ def get_oauth_credentials(client_secret_path: Path = DEFAULT_CLIENT_SECRET, uplo
     scopes = SCOPES_WITH_UPLOAD if upload_scope else SCOPES_READONLY
     creds = None
 
-    if TOKEN_FILE.exists():
+    if not force_reauth and TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), scopes)
 
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+        if not force_reauth and creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             if not client_secret_path.exists():
@@ -238,7 +259,7 @@ def get_oauth_credentials(client_secret_path: Path = DEFAULT_CLIENT_SECRET, uplo
                     "and save it as client_secret.json (see README.md)."
                 )
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(port=0, prompt="consent")
 
         TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
         TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
@@ -672,7 +693,7 @@ def main() -> None:
     cmd = args.cmd or "snapshot"
 
     if cmd == "auth":
-        get_oauth_credentials(upload_scope=True)
+        get_oauth_credentials(upload_scope=True, force_reauth=True)
         print(f"Authenticated! Token saved to {TOKEN_FILE}")
         return
 

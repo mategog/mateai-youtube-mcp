@@ -86,31 +86,51 @@ TOOLS = [
     {
         "name": "yt_upload_draft",
         "description": (
-            "Upload a rendered MP4/MOV video, cover thumbnail, and Markdown upload spec "
-            "(## Title, ## Description, ## Tags, ## Pinned comment) to YouTube Studio as a "
-            "Private draft or Scheduled release (`publish_at` ISO timestamp)."
+            "Upload and configure a YouTube video or Short end-to-end. The AI can pass title, description, "
+            "hashtags, tags, language, category, synthetic-media disclosure, thumbnail, pinned comment, "
+            "and scheduled publish_at timestamp directly (or via a spec_path markdown file)."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "video_path": {"type": "string", "description": "Absolute path to MP4/MOV file."},
-                "spec_path": {"type": "string", "description": "Absolute path to upload markdown file."},
+                "title": {"type": "string", "description": "Video title (up to 100 characters)."},
+                "description": {"type": "string", "description": "Full video description (up to 5000 characters)."},
+                "hashtags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Hashtags to append to description (e.g. ['#AINews', '#Shorts']).",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "YouTube SEO keyword tags.",
+                },
+                "pinned_comment": {"type": "string", "description": "Top-level comment to post on the video."},
+                "spec_path": {"type": "string", "description": "Optional path to upload markdown file (fallback if title/description omitted)."},
                 "thumbnail_path": {"type": "string", "description": "Optional absolute path to thumbnail PNG/JPG."},
                 "privacy_status": {
                     "type": "string",
                     "enum": ["private", "unlisted", "public"],
-                    "description": "Visibility in YouTube Studio (default: 'private').",
+                    "description": "Visibility in YouTube Studio (default: 'private'). Automatically set to 'private' when publish_at is used.",
                 },
                 "publish_at": {
                     "type": "string",
                     "description": "Optional ISO 8601 timestamp to schedule automatic publication (e.g. '2026-11-04T18:00:00+01:00').",
                 },
+                "language": {"type": "string", "description": "BCP-47 language code for title/audio (default: 'en')."},
+                "category_id": {"type": "string", "description": "YouTube category ID (default: '28' for Science & Technology)."},
+                "made_for_kids": {"type": "boolean", "description": "Whether video is made for kids (default: false)."},
+                "contains_synthetic_media": {
+                    "type": "boolean",
+                    "description": "Altered/synthetic media disclosure flag in YouTube Studio (default: false).",
+                },
                 "auto_post_comment": {
                     "type": "boolean",
-                    "description": "If true, automatically post the '## Pinned comment' text onto the video.",
+                    "description": "If true, automatically post the pinned_comment onto the video.",
                 },
             },
-            "required": ["video_path", "spec_path"],
+            "required": ["video_path"],
         },
     },
     {
@@ -171,7 +191,16 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "yt_upload_draft":
         res = upload_private_draft(
             video_path=Path(args["video_path"]),
-            spec_path=Path(args["spec_path"]),
+            spec_path=Path(args["spec_path"]) if args.get("spec_path") else None,
+            title=args.get("title"),
+            description=args.get("description"),
+            tags=args.get("tags"),
+            hashtags=args.get("hashtags"),
+            pinned_comment=args.get("pinned_comment"),
+            category_id=args.get("category_id", "28"),
+            language=args.get("language", "en"),
+            made_for_kids=bool(args.get("made_for_kids", False)),
+            contains_synthetic_media=bool(args.get("contains_synthetic_media", False)),
             thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
             privacy_status=args.get("privacy_status", "private"),
             publish_at=args.get("publish_at"),

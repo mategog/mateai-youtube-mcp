@@ -441,39 +441,68 @@ def parse_upload_markdown(md_path: Path) -> dict[str, Any]:
 
 def upload_private_draft(
     video_path: Path,
-    spec_path: Path,
+    spec_path: Path | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    hashtags: list[str] | None = None,
+    pinned_comment: str | None = None,
+    category_id: str = "28",
+    language: str = "en",
+    made_for_kids: bool = False,
+    contains_synthetic_media: bool = False,
     thumbnail_path: Path | None = None,
     privacy_status: str = "private",
     publish_at: str | None = None,
     auto_post_comment: bool = False,
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
 ) -> dict[str, Any]:
-    """Upload a rendered video + metadata as a Private Draft or Scheduled Upload to YouTube Studio."""
+    """Upload a video + full YouTube Studio setup (title, description, hashtags, tags, language, synthetic flag, thumbnail, schedule)."""
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
     if not video_path.exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
-    meta = parse_upload_markdown(spec_path)
-    if not meta["title"]:
-        raise ValueError(f"Could not find a '## Title' code block in {spec_path}")
+
+    meta = (
+        parse_upload_markdown(spec_path)
+        if (spec_path and spec_path.exists())
+        else {"title": "", "description": "", "tags": [], "pinnedComment": ""}
+    )
+
+    final_title = (title or meta["title"]).strip()
+    if not final_title:
+        raise ValueError("Video title is required (pass `title` or a `spec_path` with a `## Title` block).")
+
+    final_desc = (description if description is not None else meta["description"]).strip()
+    if hashtags:
+        clean_tags = [h if h.startswith("#") else f"#{h}" for h in hashtags]
+        hashtag_line = " ".join(clean_tags)
+        if hashtag_line not in final_desc:
+            final_desc = f"{final_desc}\n\n{hashtag_line}".strip()
+
+    final_tags = tags if tags is not None else meta["tags"]
+    final_comment = pinned_comment if pinned_comment is not None else meta["pinnedComment"]
 
     creds = get_oauth_credentials(client_secret_path, upload_scope=True)
     yt = build("youtube", "v3", credentials=creds)
 
     status_body: dict[str, Any] = {
         "privacyStatus": "private" if publish_at else privacy_status,
-        "selfDeclaredMadeForKids": False,
+        "selfDeclaredMadeForKids": made_for_kids,
+        "containsSyntheticMedia": contains_synthetic_media,
     }
     if publish_at:
         status_body["publishAt"] = publish_at
 
     body = {
         "snippet": {
-            "title": meta["title"],
-            "description": meta["description"],
-            "tags": meta["tags"],
-            "categoryId": "28",  # Science & Technology
+            "title": final_title,
+            "description": final_desc,
+            "tags": final_tags,
+            "categoryId": category_id,  # 28 = Science & Technology
+            "defaultLanguage": language,
+            "defaultAudioLanguage": language,
         },
         "status": status_body,
     }
@@ -497,23 +526,28 @@ def upload_private_draft(
             thumb_uploaded = False
 
     comment_id = None
-    if auto_post_comment and meta.get("pinnedComment"):
+    if auto_post_comment and final_comment:
         try:
-            c_res = post_video_comment(video_id, meta["pinnedComment"], client_secret_path=client_secret_path)
+            c_res = post_video_comment(video_id, final_comment, client_secret_path=client_secret_path)
             comment_id = c_res.get("commentId")
         except Exception:
             comment_id = None
 
     return {
         "videoId": video_id,
-        "title": meta["title"],
+        "title": final_title,
         "privacyStatus": status_body["privacyStatus"],
         "scheduledPublishAt": publish_at,
+        "language": language,
+        "categoryId": category_id,
+        "madeForKids": made_for_kids,
+        "containsSyntheticMedia": contains_synthetic_media,
+        "tagsCount": len(final_tags),
         "studioEditUrl": f"https://studio.youtube.com/video/{video_id}/edit",
         "watchUrl": f"https://youtu.be/{video_id}",
         "thumbnailUploaded": thumb_uploaded,
         "commentPostedId": comment_id,
-        "pinnedCommentText": meta["pinnedComment"],
+        "pinnedCommentText": final_comment,
     }
 
 
@@ -783,11 +817,19 @@ def main() -> None:
     p_table = sub.add_parser("experiment-table", help="Print Markdown table for Shorts style experiments")
     p_table.add_argument("--handle", default=DEFAULT_HANDLE)
 
-    p_up = sub.add_parser("upload-draft", help="Upload a video + markdown spec as a Private draft in Studio")
+    p_up = sub.add_parser("upload-draft", help="Upload & configure a video/Short in Studio (draft or scheduled)")
     p_up.add_argument("--video", required=True, type=Path, help="Path to MP4/MOV file")
-    p_up.add_argument("--spec", required=True, type=Path, help="Path to upload markdown file")
+    p_up.add_argument("--spec", type=Path, help="Optional path to upload markdown file")
+    p_up.add_argument("--title", help="Video title (overrides spec)")
+    p_up.add_argument("--description", help="Video description (overrides spec)")
+    p_up.add_argument("--tags", help="Comma-separated SEO tags (overrides spec)")
+    p_up.add_argument("--hashtags", help="Comma-separated hashtags, e.g. '#AINews,#Shorts'")
+    p_up.add_argument("--comment", help="Pinned comment text to post")
     p_up.add_argument("--thumbnail", type=Path, help="Optional path to cover PNG/JPG")
-    p_up.add_argument("--privacy", default="private", choices=["private", "unlisted"])
+    p_up.add_argument("--privacy", default="private", choices=["private", "unlisted", "public"])
+    p_up.add_argument("--publish-at", help="ISO 8601 schedule time, e.g. '2026-11-04T18:00:00+01:00'")
+    p_up.add_argument("--synthetic", action="store_true", help="Set altered/synthetic media disclosure flag")
+    p_up.add_argument("--auto-comment", action="store_true", help="Automatically post the top-level comment")
 
     args = parser.parse_args()
     cmd = args.cmd or "snapshot"
@@ -805,8 +847,16 @@ def main() -> None:
         res = upload_private_draft(
             video_path=args.video,
             spec_path=args.spec,
+            title=args.title,
+            description=args.description,
+            tags=[t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else None,
+            hashtags=[h.strip() for h in args.hashtags.split(",") if h.strip()] if args.hashtags else None,
+            pinned_comment=args.comment,
             thumbnail_path=args.thumbnail,
             privacy_status=args.privacy,
+            publish_at=args.publish_at,
+            contains_synthetic_media=args.synthetic,
+            auto_post_comment=args.auto_comment,
         )
         print(json.dumps(res, indent=2))
         return

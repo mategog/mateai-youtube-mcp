@@ -19,7 +19,9 @@ from yt_studio import (
     build_shorts_experiment_markdown,
     fetch_video_public_details,
     get_best_snapshot,
+    post_video_comment,
     render_html_report,
+    update_video_metadata,
     upload_private_draft,
 )
 
@@ -85,7 +87,8 @@ TOOLS = [
         "name": "yt_upload_draft",
         "description": (
             "Upload a rendered MP4/MOV video, cover thumbnail, and Markdown upload spec "
-            "(## Title, ## Description, ## Tags) to YouTube Studio as a Private or Unlisted draft."
+            "(## Title, ## Description, ## Tags, ## Pinned comment) to YouTube Studio as a "
+            "Private draft or Scheduled release (`publish_at` ISO timestamp)."
         ),
         "inputSchema": {
             "type": "object",
@@ -95,11 +98,51 @@ TOOLS = [
                 "thumbnail_path": {"type": "string", "description": "Optional absolute path to thumbnail PNG/JPG."},
                 "privacy_status": {
                     "type": "string",
-                    "enum": ["private", "unlisted"],
-                    "description": "Draft visibility in YouTube Studio (default: 'private').",
+                    "enum": ["private", "unlisted", "public"],
+                    "description": "Visibility in YouTube Studio (default: 'private').",
+                },
+                "publish_at": {
+                    "type": "string",
+                    "description": "Optional ISO 8601 timestamp to schedule automatic publication (e.g. '2026-11-04T18:00:00+01:00').",
+                },
+                "auto_post_comment": {
+                    "type": "boolean",
+                    "description": "If true, automatically post the '## Pinned comment' text onto the video.",
                 },
             },
             "required": ["video_path", "spec_path"],
+        },
+    },
+    {
+        "name": "yt_update_video",
+        "description": (
+            "Update an existing video's title, description, tags, privacy status, "
+            "scheduled publishAt timestamp, or thumbnail in YouTube Studio."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "description": "11-character YouTube video ID."},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "privacy_status": {"type": "string", "enum": ["private", "unlisted", "public"]},
+                "publish_at": {"type": "string", "description": "ISO 8601 schedule time (e.g. '2026-11-05T17:00:00+01:00')."},
+                "thumbnail_path": {"type": "string", "description": "Optional absolute path to new thumbnail image."},
+            },
+            "required": ["video_id"],
+        },
+    },
+    {
+        "name": "yt_post_comment",
+        "description": "Post a top-level comment on a YouTube video or Short.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "description": "11-character YouTube video ID."},
+                "text": {"type": "string", "description": "Comment text to post."},
+            },
+            "required": ["video_id", "text"],
         },
     },
 ]
@@ -131,7 +174,25 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             spec_path=Path(args["spec_path"]),
             thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
             privacy_status=args.get("privacy_status", "private"),
+            publish_at=args.get("publish_at"),
+            auto_post_comment=bool(args.get("auto_post_comment", False)),
         )
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_update_video":
+        res = update_video_metadata(
+            video_id=args["video_id"],
+            title=args.get("title"),
+            description=args.get("description"),
+            tags=args.get("tags"),
+            privacy_status=args.get("privacy_status"),
+            publish_at=args.get("publish_at"),
+            thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
+        )
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_post_comment":
+        res = post_video_comment(video_id=args["video_id"], text=args["text"])
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     raise ValueError(f"Unknown tool: {name}")

@@ -43,6 +43,7 @@ SCOPES_READONLY = [
 SCOPES_WITH_UPLOAD = SCOPES_READONLY + [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
 BROWSER_HEADERS = {
@@ -418,9 +419,11 @@ def upload_private_draft(
     spec_path: Path,
     thumbnail_path: Path | None = None,
     privacy_status: str = "private",
+    publish_at: str | None = None,
+    auto_post_comment: bool = False,
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
 ) -> dict[str, Any]:
-    """Upload a rendered video + metadata as a Private Draft to YouTube Studio."""
+    """Upload a rendered video + metadata as a Private Draft or Scheduled Upload to YouTube Studio."""
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
@@ -433,6 +436,13 @@ def upload_private_draft(
     creds = get_oauth_credentials(client_secret_path, upload_scope=True)
     yt = build("youtube", "v3", credentials=creds)
 
+    status_body: dict[str, Any] = {
+        "privacyStatus": "private" if publish_at else privacy_status,
+        "selfDeclaredMadeForKids": False,
+    }
+    if publish_at:
+        status_body["publishAt"] = publish_at
+
     body = {
         "snippet": {
             "title": meta["title"],
@@ -440,10 +450,7 @@ def upload_private_draft(
             "tags": meta["tags"],
             "categoryId": "28",  # Science & Technology
         },
-        "status": {
-            "privacyStatus": privacy_status,
-            "selfDeclaredMadeForKids": False,
-        },
+        "status": status_body,
     }
 
     media = MediaFileUpload(str(video_path), chunksize=1024 * 1024 * 8, resumable=True)
@@ -464,14 +471,110 @@ def upload_private_draft(
         except Exception:
             thumb_uploaded = False
 
+    comment_id = None
+    if auto_post_comment and meta.get("pinnedComment"):
+        try:
+            c_res = post_video_comment(video_id, meta["pinnedComment"], client_secret_path=client_secret_path)
+            comment_id = c_res.get("commentId")
+        except Exception:
+            comment_id = None
+
     return {
         "videoId": video_id,
         "title": meta["title"],
-        "privacyStatus": privacy_status,
+        "privacyStatus": status_body["privacyStatus"],
+        "scheduledPublishAt": publish_at,
         "studioEditUrl": f"https://studio.youtube.com/video/{video_id}/edit",
         "watchUrl": f"https://youtu.be/{video_id}",
         "thumbnailUploaded": thumb_uploaded,
-        "pinnedCommentReminder": meta["pinnedComment"],
+        "commentPostedId": comment_id,
+        "pinnedCommentText": meta["pinnedComment"],
+    }
+
+
+def update_video_metadata(
+    video_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    privacy_status: str | None = None,
+    publish_at: str | None = None,
+    thumbnail_path: Path | None = None,
+    client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+) -> dict[str, Any]:
+    """Update title, description, tags, privacy, schedule time, or thumbnail of an existing video."""
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+
+    creds = get_oauth_credentials(client_secret_path, upload_scope=True)
+    yt = build("youtube", "v3", credentials=creds)
+
+    existing = yt.videos().list(part="snippet,status", id=video_id).execute()
+    if not existing.get("items"):
+        raise ValueError(f"Video not found: {video_id}")
+
+    item = existing["items"][0]
+    snippet = item["snippet"]
+    status = item["status"]
+
+    if title is not None:
+        snippet["title"] = title
+    if description is not None:
+        snippet["description"] = description
+    if tags is not None:
+        snippet["tags"] = tags
+    if privacy_status is not None:
+        status["privacyStatus"] = privacy_status
+    if publish_at is not None:
+        status["privacyStatus"] = "private"
+        status["publishAt"] = publish_at
+
+    updated = yt.videos().update(
+        part="snippet,status",
+        body={"id": video_id, "snippet": snippet, "status": status},
+    ).execute()
+
+    thumb_updated = False
+    if thumbnail_path and thumbnail_path.exists():
+        yt.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(str(thumbnail_path)),
+        ).execute()
+        thumb_updated = True
+
+    return {
+        "videoId": video_id,
+        "title": updated["snippet"]["title"],
+        "privacyStatus": updated["status"].get("privacyStatus"),
+        "publishAt": updated["status"].get("publishAt"),
+        "thumbnailUpdated": thumb_updated,
+        "studioEditUrl": f"https://studio.youtube.com/video/{video_id}/edit",
+    }
+
+
+def post_video_comment(
+    video_id: str,
+    text: str,
+    client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+) -> dict[str, Any]:
+    """Post a top-level comment on a video (ready to be pinned in Studio)."""
+    from googleapiclient.discovery import build
+
+    creds = get_oauth_credentials(client_secret_path, upload_scope=True)
+    yt = build("youtube", "v3", credentials=creds)
+    resp = yt.commentThreads().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "videoId": video_id,
+                "topLevelComment": {"snippet": {"textOriginal": text}},
+            }
+        },
+    ).execute()
+    return {
+        "commentId": resp["id"],
+        "videoId": video_id,
+        "text": text,
     }
 
 

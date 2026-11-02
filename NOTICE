@@ -5,6 +5,12 @@ Original Author & Channel:
 - YouTube: https://www.youtube.com/@mateai-c6m
 - GitHub: https://github.com/mategog/mateai-youtube-mcp
 
+Third-Party Open-Source Strategy Skills Included (MIT License):
+- youtube-strategy (@intentsolutionsio/youtube-strategy) by Jeremy Longshore / Intent Solutions
+  https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy
+- claude-youtube by Daniel Agrici (@AgriciDaniel)
+  https://github.com/AgriciDaniel/claude-youtube
+
 Under Section 4(d) of the Apache License 2.0 and the Commons Clause,
 any redistribution or derivative work of this software must retain this
 attribution notice and may not be sold or offered as a paid hosted service.

@@ -3,9 +3,24 @@ name: yt-studio
 description: Connect to YouTube channels and YouTube Studio (MateAI @mateai-c6m or any handle) to fetch live video & Shorts views, retention, swipe-away rates, experiment tables, HTML dashboards, schedule uploads, update video metadata/thumbnails, and post comments.
 ---
 
-# MateAI YouTube Studio & Analytics Skill (`yt-studio`)
+# MateAI YouTube Studio & Strategy Suite (`yt-studio`)
 
 Built by [MateAI (@mateai-c6m)](https://www.youtube.com/@mateai-c6m) · [GitHub Repo](https://github.com/mategog/mateai-youtube-mcp).
+
+> **Shoutout & Credits:** This plugin combines MateAI's local **YouTube Studio & Analytics MCP Server** with the open-source YouTube strategy & creator workflows by **[Jeremy Longshore (`@jeremylongshore` / `youtube-strategy`)](https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy)** and **[Daniel Agrici (`@AgriciDaniel` / `claude-youtube`)](https://github.com/AgriciDaniel/claude-youtube)**.
+
+## End-to-End AI YouTube Workflow (Strategy Skills + Live MCP Execution)
+
+Whenever planning, scripting, packaging, uploading, or analyzing a YouTube video or Short, combine the bundled strategy skills with the live `mateai-youtube` MCP tools:
+
+| Stage | Bundled Strategy Skill | Live `mateai-youtube` MCP Tool Used |
+|---|---|---|
+| **1. Channel Audit & Analytics** | `skills/claude-youtube/sub-skills/audit.md` & `analyze.md` | `yt_channel_snapshot`, `yt_shorts_experiment_table` |
+| **2. Niche & Competitor Research** | `skills/yt-research/SKILL.md` & `sub-skills/competitor.md` | `yt_channel_snapshot(handle="@competitor", force_public=true)` |
+| **3. Ideation & Validation** | `skills/yt-ideation/SKILL.md` & `sub-skills/ideate.md` | `yt_channel_snapshot` (checks outlier videos & gaps) |
+| **4. Production Brief & Script** | `skills/yt-brief/SKILL.md`, `yt-outline/SKILL.md`, `sub-skills/script.md`, `sub-skills/hook.md`, `sub-skills/shorts.md` | — |
+| **5. Packaging, SEO & Thumbnails** | `skills/yt-packaging/SKILL.md`, `sub-skills/seo.md`, `sub-skills/thumbnail.md`, `sub-skills/metadata.md` | `yt_update_video` (for A/B title/thumbnail swaps) |
+| **6. Upload, Full Setup & Schedule** | `skills/yt-studio/SKILL.md` | `yt_upload_draft` + `yt_post_comment` |
 
 ## When to Use This Skill
 Use this skill whenever the user asks to:

@@ -27,6 +27,10 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
+for _sp in sorted((HERE / ".venv" / "lib").glob("python*/site-packages")):
+    if str(_sp) not in sys.path:
+        sys.path.insert(0, str(_sp))
+
 TOKEN_FILE = HERE / ".tokens" / "token.json"
 
 

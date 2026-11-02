@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <!-- 10% margin: artwork inside 14..114 -->
+  <defs>
+    <linearGradient id="bgGrad" x1="14" y1="14" x2="114" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#161B22"/>
+      <stop offset="100%" stop-color="#0E1116"/>
+    </linearGradient>
+    <linearGradient id="cyanEdge" x1="14" y1="14" x2="114" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#58A6FF"/>
+      <stop offset="100%" stop-color="#F0883E"/>
+    </linearGradient>
+  </defs>
+  <!-- Low-poly hexagonal badge -->
+  <polygon points="64,14 108,36 108,92 64,114 20,92 20,36" fill="url(#bgGrad)" stroke="url(#cyanEdge)" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Low-poly facet lines -->
+  <polygon points="64,14 108,36 64,64" fill="#58A6FF" fill-opacity="0.12"/>
+  <polygon points="20,92 64,114 64,64" fill="#F0883E" fill-opacity="0.14"/>
+  <!-- Play triangle (faceted) -->
+  <polygon points="48,41 88,64 48,87" fill="#F0883E"/>
+  <polygon points="48,41 88,64 62,64" fill="#FFAB70"/>
+  <!-- Analytics bar accents -->
+  <rect x="34" y="74" width="5" height="14" rx="2" fill="#58A6FF"/>
+  <rect x="42" y="66" width="5" height="22" rx="2" fill="#3FB950"/>
+</svg>

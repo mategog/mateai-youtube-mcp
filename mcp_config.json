@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "mateai-youtube": {
+      "command": "python3",
+      "type": "stdio",
+      "args": [
+        "mcp_server.py"
+      ],
+      "tools": {
+        "yt_channel_snapshot": { "eager": true },
+        "yt_shorts_experiment_table": { "eager": true },
+        "yt_video_details": { "eager": true },
+        "yt_upload_draft": { "eager": true },
+        "yt_update_video": { "eager": true },
+        "yt_post_comment": { "eager": true }
+      }
+    }
+  }
+}

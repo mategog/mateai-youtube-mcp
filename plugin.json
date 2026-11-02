@@ -1,0 +1,18 @@
+{
+  "name": "mateai-youtube",
+  "displayName": "MateAI YouTube Studio",
+  "version": "1.0.0",
+  "description": "Self-hosted YouTube Studio & Analytics connector. Pull live Shorts retention, swipe-away rates, and watch time, or upload and schedule videos directly from Antigravity or Claude Code.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Show my live YouTube Studio snapshot and open the HTML dashboard",
+    "Compare Viewed vs Swiped Away and retention across my YouTube Shorts",
+    "Upload and schedule my latest Short with its cover and metadata"
+  ],
+  "author": {
+    "name": "MateAI",
+    "url": "https://www.youtube.com/@mateai-c6m"
+  },
+  "homepage": "https://www.youtube.com/@mateai-c6m",
+  "repository": "https://github.com/mategog/mateai-youtube-mcp"
+}

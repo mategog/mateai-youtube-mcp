@@ -34,14 +34,31 @@ python3 yt_studio.py experiment-table --handle @mateai-c6m
 
 ---
 
-## Connect to Antigravity or Claude Code (MCP Server)
+## Install as a Plugin (Antigravity & Claude Code)
 
-Add `mateai-youtube-mcp` to your MCP configuration (`mcp_config.json` in Antigravity or `claude_desktop_config.json` / `.mcp.json` in Claude Code):
+`mateai-youtube-mcp` ships as a full **Plugin** (bundling the MCP Server + the `yt-studio` AI Producer Skill + UI card & starter prompts).
 
+### Option A: Google Antigravity
+Clone directly into your Antigravity plugins directory and restart Antigravity:
+
+```bash
+git clone https://github.com/mategog/mateai-youtube-mcp.git \
+  ~/.gemini/config/plugins/mateai-youtube
+```
+
+### Option B: Claude Code
+Install directly from the plugin marketplace:
+
+```bash
+claude plugin marketplace add mategog/mateai-youtube-mcp
+claude plugin install yt-studio@mateai-youtube-mcp
+```
+
+### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
 {
   "mcpServers": {
-    "youtube-studio": {
+    "mateai-youtube": {
       "command": "python3",
       "args": ["/ABSOLUTE/PATH/TO/mateai-youtube-mcp/mcp_server.py"]
     }
@@ -55,7 +72,9 @@ Add `mateai-youtube-mcp` to your MCP configuration (`mcp_config.json` in Antigra
 | `yt_channel_snapshot` | Fetch channel overview, Long-form uploads, Shorts stats, and update `report.html`. |
 | `yt_shorts_experiment_table` | Generate a Markdown table comparing Shorts retention, swipe-away rate, and views. |
 | `yt_video_details` | Inspect metadata and metrics for any 11-character YouTube `video_id`. |
-| `yt_upload_draft` | Upload a local MP4/MOV + cover image + Markdown spec (`Title`, `Description`, `Tags`) as a Private draft in YouTube Studio. |
+| `yt_upload_draft` | Upload a local MP4/MOV + cover image + Markdown spec (`Title`, `Description`, `Tags`) as a Private draft or **Scheduled release (`publish_at`)** in YouTube Studio. |
+| `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
+| `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
 
 ---
 

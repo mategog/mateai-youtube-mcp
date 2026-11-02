@@ -1,0 +1,15 @@
+{
+  "name": "mateai-youtube-mcp",
+  "description": "Self-hosted YouTube Studio & Analytics plugin and MCP server from the MateAI channel (@mateai-c6m).",
+  "owner": {
+    "name": "MateAI",
+    "url": "https://www.youtube.com/@mateai-c6m"
+  },
+  "plugins": [
+    {
+      "name": "yt-studio",
+      "source": ".",
+      "description": "Pull YouTube Studio analytics (retention, swipe-away rate, engaged views), render HTML dashboards, and schedule/upload videos."
+    }
+  ]
+}

@@ -4,7 +4,9 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epuplanner)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 
-A local, self-hosted **YouTube Studio & Analytics MCP Connector + CLI** for **Google Antigravity** and **Claude Code / Claude Desktop**, built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
+![MateAI YouTube Studio & Shorts Experiment Dashboard](assets/dashboard-preview.png)
+
+A local, self-hosted **YouTube Studio & Analytics MCP Connector + Creator Strategy Plugin** for **Google Antigravity** and **Claude Code / Claude Desktop**, built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
 
 Most open-source YouTube MCP servers only scrape subtitles with `yt-dlp`. Tools that connect to your actual **YouTube Studio Analytics** (retention, Shorts swipe-away rates, subscribers gained) or **upload drafts** usually charge $19–$49/month as hosted SaaS wrappers around Google's free APIs.
 

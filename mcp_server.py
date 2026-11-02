@@ -18,6 +18,7 @@ from yt_studio import (
     REPORT_FILE,
     build_shorts_experiment_markdown,
     fetch_video_public_details,
+    fetch_video_retention_diagnosis,
     get_best_snapshot,
     post_video_comment,
     render_html_report,
@@ -71,13 +72,20 @@ TOOLS = [
     },
     {
         "name": "yt_video_details",
-        "description": "Fetch metadata and stats for a specific YouTube video or Short by 11-char videoId.",
+        "description": (
+            "Fetch deep retention diagnosis (100-point retention curve, exact MM:SS drop-off cliffs, "
+            "YouTube peer percentiles, traffic sources, and optional spoken-word mapping) for a video or Short."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "video_id": {
                     "type": "string",
-                    "description": "11-character YouTube video ID (e.g. 'WcuWfkVC_5o').",
+                    "description": "11-character YouTube video ID (e.g. 'I9c6W135VZk').",
+                },
+                "words_or_script_path": {
+                    "type": "string",
+                    "description": "Optional path to Whisper words.js / JSON timing file to map drop-off cliffs to exact spoken words.",
                 },
             },
             "required": ["video_id"],
@@ -185,7 +193,13 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     if name == "yt_video_details":
         video_id = args["video_id"]
+        words_path = Path(args["words_or_script_path"]) if args.get("words_or_script_path") else None
         details = fetch_video_public_details(video_id)
+        try:
+            diag = fetch_video_retention_diagnosis(video_id, words_or_script_path=words_path)
+            details["studioDiagnosis"] = diag
+        except Exception as exc:
+            details["studioDiagnosisError"] = str(exc)
         return {"content": [{"type": "text", "text": json.dumps(details, indent=2)}]}
 
     if name == "yt_upload_draft":

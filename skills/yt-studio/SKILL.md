@@ -15,7 +15,7 @@ Whenever planning, scripting, packaging, uploading, or analyzing a YouTube video
 
 | Stage | Bundled Strategy Skill | Live `mateai-youtube` MCP Tool Used |
 |---|---|---|
-| **1. Channel Audit & Analytics** | `skills/claude-youtube/sub-skills/audit.md` & `analyze.md` | `yt_channel_snapshot`, `yt_shorts_experiment_table` |
+| **1. Surgical Analytics & Retention Autopsy** | `skills/yt-analytics/SKILL.md`, `sub-skills/audit.md` & `analyze.md` | `yt_channel_snapshot`, `yt_shorts_experiment_table`, `yt_video_details` (100-pt retention curve + spoken-word cliff mapping) |
 | **2. Niche & Competitor Research** | `skills/yt-research/SKILL.md` & `sub-skills/competitor.md` | `yt_channel_snapshot(handle="@competitor", force_public=true)` |
 | **3. Ideation & Validation** | `skills/yt-ideation/SKILL.md` & `sub-skills/ideate.md` | `yt_channel_snapshot` (checks outlier videos & gaps) |
 | **4. Production Brief & Script** | `skills/yt-brief/SKILL.md`, `yt-outline/SKILL.md`, `sub-skills/script.md`, `sub-skills/hook.md`, `sub-skills/shorts.md` | — |

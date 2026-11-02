@@ -1,0 +1,42 @@
+name: CI & Attribution Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Verify MCP Server & Guard Attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guard against leaked OAuth secrets
+        run: |
+          if git ls-files | grep -E '(client_secret|token\.json|credentials\.json)'; then
+            echo "ERROR: OAuth secret or token file detected in git index!"
+            exit 1
+          fi
+
+      - name: Verify License, NOTICE & MateAI Attribution intact
+        run: |
+          test -f LICENSE
+          test -f NOTICE
+          grep -q "Commons Clause" LICENSE
+          grep -q "https://www.youtube.com/@mateai-c6m" NOTICE
+          grep -q "https://www.youtube.com/@mateai-c6m" yt_studio.py
+
+      - name: Compile & test MCP JSON-RPC handshake
+        run: |
+          python3 -m py_compile yt_studio.py mcp_server.py
+          OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | python3 mcp_server.py)
+          echo "$OUT" | grep -q '"mateai-youtube-mcp"'
+          echo "$OUT" | grep -q '"yt_channel_snapshot"'
+          echo "$OUT" | grep -q '"yt_upload_draft"'

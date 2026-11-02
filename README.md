@@ -1,7 +1,7 @@
 # mateai-youtube-mcp
 
 [![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/mategog)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epuplanner)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 
 A local, self-hosted **YouTube Studio & Analytics MCP Connector + CLI** for **Google Antigravity** and **Claude Code / Claude Desktop**, built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
@@ -85,7 +85,7 @@ Google gives every developer **10,000 free quota units/day** on the YouTube Data
 
 If this saved you from paying for a monthly "Creator OS" subscription:
 - **Subscribe on YouTube:** [MateAI (@mateai-c6m)](https://www.youtube.com/@mateai-c6m) — real AI build-logs, measured costs, no hype.
-- **Buy Mate a Coffee:** [buymeacoffee.com/mategog](https://buymeacoffee.com/mategog)
+- **Buy Mate a Coffee:** [buymeacoffee.com/epuplanner](https://buymeacoffee.com/epuplanner)
 
 ## License & Anti-Resale Protection
 

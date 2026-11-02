@@ -80,23 +80,18 @@ claude plugin install yt-studio@mateai-youtube-mcp
 
 ## Unlock Private YouTube Studio Analytics & Draft Uploads ($0/mo)
 
-Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required**.
+Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required** and you keep 100% of your own private quota.
 
-1. Install the official Google OAuth libraries in a local virtualenv:
-   ```bash
-   python3 -m venv .venv
-   .venv/bin/pip install -r requirements.txt
-   ```
-2. Go to the [Google Cloud Console](https://console.cloud.google.com/):
-   - Enable **YouTube Data API v3** and **YouTube Analytics API**.
-   - Under **Google Auth Platform / Credentials**, create an **OAuth 2.0 Client ID** of type **Desktop App**.
-   - Add your own Google/YouTube email under **Audience → Test users**.
-   - Download the JSON file and save it as `client_secret.json` in this directory (it is `.gitignore`d so it can never be committed).
-3. Run the one-time browser login:
-   ```bash
-   .venv/bin/python yt_studio.py auth
-   ```
-4. From now on, `yt_studio.py snapshot` and the MCP server automatically include private Studio metrics (`Avg % viewed`, `Viewed vs swiped`, `Engaged views`, `Subs gained`) and unlock `upload-draft`!
+Run the **1-Command Guided Setup Wizard**:
+
+```bash
+python3 yt_studio.py setup
+```
+
+What `python3 yt_studio.py setup` does automatically:
+1. **Creates `.venv` & installs Google's OAuth libraries** automatically if not yet installed.
+2. **Auto-enables the YouTube APIs via `gcloud`** (if you have the `gcloud` CLI installed), or pops open the direct 1-click enablement pages.
+3. **Opens the exact Test User & Create Desktop Client screens** and **watches your `~/Downloads` folder in real time**—the instant you click **"Download JSON"** in your browser, the wizard automatically grabs `client_secret_*.json` from `~/Downloads`, moves it into `google_auth_secret/client_secret.json` (`0600` permissions, `.gitignore`d), launches your YouTube channel login, and opens your live `report.html` dashboard!
 
 ---
 

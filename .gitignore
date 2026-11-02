@@ -1,0 +1,19 @@
+# Never commit OAuth secrets or tokens
+client_secret*.json
+credentials.json
+token.json
+.tokens/
+*.pem
+*.key
+
+# Virtual environments & Python cache
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# OS files
+.DS_Store

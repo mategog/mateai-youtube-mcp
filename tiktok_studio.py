@@ -51,6 +51,7 @@ INBOX_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
 
 SINGLE_CHUNK_MAX_BYTES = 64_000_000
 MULTI_CHUNK_SIZE_BYTES = 32_000_000
+VIDEO_LIST_MAX_PAGES = 50
 PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 HASHTAG_RE = re.compile(r"(?<!\w)#[A-Za-z][A-Za-z0-9_]*")
 VIDEO_CONTENT_TYPES = {
@@ -277,10 +278,13 @@ def _write_secret_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
     try:
-        os.write(fd, content.encode("utf-8"))
-    finally:
+        # O_CREAT's mode is ignored for an existing file, so tighten it before writing.
+        os.fchmod(fd, 0o600)
+    except BaseException:
         os.close(fd)
-    os.chmod(path, 0o600)
+        raise
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(content)
 
 
 def _load_client_credentials(client_file: Path = TIKTOK_CLIENT_FILE) -> tuple[str, str]:
@@ -397,16 +401,16 @@ def fetch_tiktok_snapshot(
         handle = f"@{username}" if not username.startswith("@") else username
         channel_url = f"https://www.tiktok.com/{handle}"
     else:
-        handle = display_name
+        handle = ""
         channel_url = ""
 
     raw_videos: list[dict[str, Any]] = []
     req_body: dict[str, Any] = {"max_count": 20}
-    while True:
+    for _ in range(VIDEO_LIST_MAX_PAGES):
         videos_payload = _http_json(VIDEO_LIST_URL, token=token, body=req_body)
         vdata = videos_payload.get("data") or {}
         raw_videos.extend(vdata.get("videos") or [])
-        if not vdata.get("has_more") or vdata.get("cursor") is None:
+        if not vdata.get("has_more") or vdata.get("cursor") is None or vdata["cursor"] == req_body.get("cursor"):
             break
         req_body = {"max_count": 20, "cursor": vdata["cursor"]}
 

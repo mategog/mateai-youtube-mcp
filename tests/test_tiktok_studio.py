@@ -187,7 +187,8 @@ class TestTikTokPureLogic(unittest.TestCase):
             snap = fetch_tiktok_snapshot()
         self.assertEqual(len(snap["videos"]), 2)
         self.assertEqual(mock_http.call_args_list[2][1]["body"], {"max_count": 20, "cursor": 1761600000})
-        self.assertEqual(snap["channel"]["handle"], "Creator Name")
+        self.assertEqual(snap["channel"]["handle"], "")
+        self.assertEqual(snap["channel"]["title"], "Creator Name")
         self.assertEqual(snap["channel"]["url"], "")
         self.assertEqual(snap["videos"][0]["url"], "")
         self.assertEqual(snap["videos"][1]["url"], "https://www.tiktok.com/@real/video/222")
@@ -200,6 +201,27 @@ class TestTikTokPureLogic(unittest.TestCase):
         self.assertIn(r"Multi Line \| TikTok", md)
         for row in md.splitlines()[2:]:
             self.assertEqual(len(re.findall(r"(?<!\\)\|", row)), 11)
+
+    def test_fetch_tiktok_snapshot_stops_when_cursor_does_not_advance(self):
+        from unittest.mock import patch
+        from tiktok_studio import fetch_tiktok_snapshot
+        user_resp = {"data": {"user": {"username": "mateai"}}}
+        stuck_page = {"data": {"videos": [{"id": "1"}], "has_more": True, "cursor": 5}}
+        with patch("tiktok_studio.get_valid_tiktok_token", return_value="tok"), \
+             patch("tiktok_studio._http_json", side_effect=[user_resp] + [stuck_page] * 60) as mock_http:
+            fetch_tiktok_snapshot()
+        self.assertEqual(mock_http.call_count, 3)  # user info + first page + one repeat of cursor 5
+
+    def test_write_secret_file_tightens_existing_loose_file(self):
+        import os
+        from tiktok_studio import _write_secret_file
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "tiktok_token.json"
+            p.write_text("old", encoding="utf-8")
+            os.chmod(p, 0o644)
+            _write_secret_file(p, '{"access_token":"new"}')
+            self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(p.read_text(encoding="utf-8"), '{"access_token":"new"}')
 
 
 if __name__ == "__main__":

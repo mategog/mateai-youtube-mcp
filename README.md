@@ -58,14 +58,16 @@ claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
-The plugin keeps its state (`.venv`, OAuth secret, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates. Public snapshots work once you opt in (see above); to unlock private Studio analytics and uploads, run the setup wizard with `MATEAI_YT_HOME` pointing at that folder so everything lands there:
+The plugin keeps its state (`.venv`, OAuth secret, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates. Public snapshots work once you opt in (see above). To unlock private Studio analytics and uploads, run **`/yt-setup`** (needs Claude Code 2.1.287 or newer; see [Easy Setup](#easy-setup-yt-setup-claude-code) below).
+
+On an older Claude Code, run the setup wizard by hand with `MATEAI_YT_HOME` pointing at that folder:
 
 ```bash
 MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
-  python3 ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/1.0.2/yt_studio.py setup
+  python3 ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/<version>/yt_studio.py setup
 ```
 
-Replace `1.0.2` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
+Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
 
 ### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
@@ -98,6 +100,44 @@ This plugin integrates the **YouTube Strategy & Creator Skill Suite** directly a
 - **Production Pipeline Skills** (`yt-research`, `yt-ideation`, `yt-brief`, `yt-packaging`, `yt-outline`, plus `/yt-pipeline` command and `yt-scraper`, `channel-analyzer`, `idea-validator` agents) — created by **[Jeremy Longshore (`@jeremylongshore` / Intent Solutions)](https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy)** (`@intentsolutionsio/youtube-strategy`, MIT).
 - **14 Creator Sub-Skills & Playbooks** (`audit`, `seo`, `script`, `hook`, `thumbnail`, `strategy`, `calendar`, `shorts`, `analyze`, `repurpose`, `monetize`, `competitor`, `metadata`, `ideate`) — created by **[Daniel Agrici (`@AgriciDaniel`)](https://github.com/AgriciDaniel/claude-youtube)** (`claude-youtube`, MIT).
 - **Live YouTube Studio Execution & Analytics MCP** (`yt_channel_snapshot`, `yt_shorts_experiment_table`, `yt_upload_draft`, `yt_update_video`, `yt_post_comment`, interactive `report.html` dashboard & 1-command `setup` wizard) — built by **[MateAI (`@mateai-c6m`)](https://www.youtube.com/@mateai-c6m)**.
+
+---
+
+## Easy Setup: `/yt-setup` (Claude Code)
+
+Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube account. You do this once. Everything stays on your computer; only Google sees your sign-in.
+
+**You need:** Claude Code 2.1.287 or newer, this plugin installed, and the Google account that owns your channel.
+
+**1. Type `/yt-setup` and read the answer.**
+
+| It says | Meaning | You |
+| --- | --- | --- |
+| "Already connected." | Done. | Nothing |
+| "Found your Google client file. Opening your browser…" | It has the file it needs. | Go to step 3 |
+| "One manual step first… I opened two Google pages." | No client file yet. Google makes everyone create one. | Go to step 2 |
+
+**2. Make the Google client file (only if asked, about 3 minutes).** No program can do this for you.
+- Page "Audience": click **Add users** under **Test users**, enter your YouTube email, **Save**.
+- Page "Create OAuth client": **Application type = Desktop app** (not "Web application"), any name, **Create**, then **Download JSON**.
+- Leave the file in `~/Downloads` and run `/yt-setup` again.
+
+**3. Sign in (your browser opens).** Pick your YouTube account. On "Google hasn't verified this app" click **Advanced**, then **Go to … (unsafe)**; this is your own app. Tick **every box**, click **Allow**. Claude Code then shows **"yt-setup: connected!"** and the "YouTube: not connected" status hint disappears.
+
+`/yt-setup` copies your client file into the plugin's data folder with `600` permissions, never prints it, and never sees your Google password.
+
+| Problem | Fix |
+| --- | --- |
+| It says the file is a **"web" client** | Create a new client and choose **Desktop app**. |
+| Browser shows **"Access blocked" / 403 access_denied** | Your email is not under **Test users**. Add it, then rerun `/yt-setup`. |
+| **"Login did not finish"** | The tab was closed early or a box was not ticked. Rerun `/yt-setup`. |
+| **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
+| **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
+| **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
+| Asked to log in again after about a week | Apps in "Testing" mode can have sign-ins that expire after about 7 days. Publishing the app on the Audience page may avoid that. **[unconfirmed]** |
+| Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
+
+Not using Claude Code, or on an older version? Use the wizard below.
 
 ---
 

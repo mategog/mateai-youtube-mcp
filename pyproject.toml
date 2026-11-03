@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mateai-youtube-mcp"
+version = "1.0.1"
+description = "Self-hosted YouTube Studio & Analytics MCP Connector and Creator Strategy Suite by MateAI (@mateai-c6m)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [
+    { name = "MateAI", url = "https://www.youtube.com/@mateai-c6m" }
+]
+dependencies = [
+    "google-api-python-client>=2.100.0",
+    "google-auth-oauthlib>=1.1.0",
+    "google-auth-httplib2>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mategog/mateai-youtube-mcp"
+Repository = "https://github.com/mategog/mateai-youtube-mcp"

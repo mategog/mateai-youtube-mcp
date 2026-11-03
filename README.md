@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/mategog/mateai-youtube-mcp?color=238636)](https://github.com/mategog/mateai-youtube-mcp/releases/latest)
 [![mategog/mateai-youtube-mcp MCP server](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp)
 [![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor%20on%20GitHub-mategog-EA4AAA?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/mategog)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epuplanner)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 
@@ -169,6 +170,7 @@ What `python3 yt_studio.py setup` does automatically:
 ## Support & Channel
 
 If this saved you from paying for a monthly "Creator OS" subscription:
+- **Sponsor on GitHub:** [github.com/sponsors/mategog](https://github.com/sponsors/mategog)
 - **Subscribe on YouTube:** [MateAI (@mateai-c6m)](https://www.youtube.com/@mateai-c6m) — real AI build-logs, measured costs, no hype.
 - **Buy Mate a Coffee:** [buymeacoffee.com/epuplanner](https://buymeacoffee.com/epuplanner)
 

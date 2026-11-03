@@ -13,27 +13,27 @@ A local, self-hosted **YouTube Studio & Analytics MCP Connector + Creator Strate
 Most open-source YouTube MCP servers only scrape subtitles with `yt-dlp`. Tools that connect to your actual **YouTube Studio Analytics** (retention, Shorts swipe-away rates, subscribers gained) or **upload drafts** usually charge $19–$49/month as hosted SaaS wrappers around Google's free APIs.
 
 This connector runs **100% locally on your machine for $0/month**:
-- **Zero-Config Public Mode (works instantly, stdlib only):** Pulls live channel stats, Long-form videos, Shorts, view counts, and likes for any `@handle` and renders a local `report.html` dashboard.
+- **Public Mode (opt-in, stdlib only):** Reads public channel pages, with no API keys. Off by default; turn it on with `--public`, `force_public=true`, or `MATEAI_YT_PUBLIC_SCRAPE=1`. Pulls live channel stats, Long-form videos, Shorts, view counts, and likes for any `@handle` and renders a local `report.html` dashboard.
 - **Studio OAuth2 Mode (free Google Cloud API):** Pulls private **YouTube Analytics API v2** metrics (*Average % viewed*, *Viewed vs. swiped away*, *Engaged views*, *Watch time*, *Subscribers gained*) and uploads rendered videos + thumbnails as **Private Drafts** in YouTube Studio.
 
 ---
 
-## Quick Start (Zero-Config Public Snapshot)
+## Quick Start (Public Snapshot, opt-in)
 
-No API keys or packages needed—runs with Python 3 standard library out of the box:
+No API keys or packages needed, but public page scraping is opt-in, so pass `--public`. For your own channel, the OAuth2 setup below (official YouTube APIs) is the recommended default:
 
 ```bash
 git clone https://github.com/mategog/mateai-youtube-mcp.git
 cd mateai-youtube-mcp
 
-python3 yt_studio.py snapshot --handle @mateai-c6m
+python3 yt_studio.py snapshot --public --handle @mateai-c6m
 open report.html
 ```
 
 Print a Markdown table for tracking Shorts A/B style experiments:
 
 ```bash
-python3 yt_studio.py experiment-table --handle @mateai-c6m
+MATEAI_YT_PUBLIC_SCRAPE=1 python3 yt_studio.py experiment-table --handle @mateai-c6m
 ```
 
 ---
@@ -58,7 +58,7 @@ claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
-The plugin keeps its state (`.venv`, OAuth secret, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates. Public snapshots work right away; to unlock private Studio analytics and uploads, run the setup wizard with `MATEAI_YT_HOME` pointing at that folder so everything lands there:
+The plugin keeps its state (`.venv`, OAuth secret, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates. Public snapshots work once you opt in (see above); to unlock private Studio analytics and uploads, run the setup wizard with `MATEAI_YT_HOME` pointing at that folder so everything lands there:
 
 ```bash
 MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \

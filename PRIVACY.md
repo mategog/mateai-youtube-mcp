@@ -6,7 +6,7 @@ This plugin runs entirely on your own computer. It has no server of its own, and
 
 ## What it accesses
 
-- **Public channel pages** on youtube.com, to read public video titles, views and likes.
+- **Public channel pages** on youtube.com, only if you opt in to public mode, to read public video titles, views and likes.
 - **Your YouTube account, only if you run the OAuth setup.** It uses Google's YouTube Data API v3 and YouTube Analytics API v2 with the scopes you approve: read-only analytics, and optionally upload, metadata edits and comments.
 
 ## What it stores, and where

@@ -20,6 +20,7 @@ from yt_studio import (
     fetch_video_public_details,
     fetch_video_retention_diagnosis,
     get_best_snapshot,
+    PUBLIC_SCRAPE_ENV,
     post_video_comment,
     render_html_report,
     update_video_metadata,
@@ -47,7 +48,7 @@ TOOLS = [
             "local report.html dashboard and channel_snapshot.json cache on disk. "
             "When YouTube OAuth2 credentials are present (and force_public is false), queries YouTube Data API v3 (~3 quota units) "
             "and YouTube Analytics API v2 for private owner metrics (averageViewPercentage, swipedAwayRate, engagedViews, "
-            "estimatedMinutesWatched, subscribersGained); otherwise falls back to zero-config public HTML/RSS scraping with no API quota cost. "
+            "estimatedMinutesWatched, subscribersGained); public page scraping is opt-in only (force_public=true or MATEAI_YT_PUBLIC_SCRAPE=1); without OAuth or opt-in it returns setup instructions. "
             "Overwrites report.html idempotently on each run."
         ),
         "inputSchema": {
@@ -62,7 +63,7 @@ TOOLS = [
                 "force_public": {
                     "type": "boolean",
                     "default": False,
-                    "description": "If true, bypass stored OAuth2 tokens and use zero-config public scraping only.",
+                    "description": "Opt in to public page scraping for this call (bypasses OAuth2; public views/likes only). Only set when the user asks for it.",
                 },
             },
             "additionalProperties": False,
@@ -119,8 +120,8 @@ TOOLS = [
         "description": (
             "Fetch public video metadata plus owner-authorized YouTube Analytics retention diagnostics for a single 11-character video_id: "
             "100-point elapsedVideoTimeRatio audience retention curve, exact MM:SS drop-off cliffs, relativeRetentionPerformance peer percentiles, "
-            "and traffic source breakdown. Public metadata works without credentials; retention curve and traffic diagnostics require channel-owner OAuth2 "
-            "(if unauthenticated or called on a non-owned/private video, public metadata is returned with studioDiagnosisError explaining the missing scope). "
+            "and traffic source breakdown. Retention curve and traffic diagnostics require channel-owner OAuth2 (a studioDiagnosisError explains a missing scope). "
+            "Public page metadata (title, views, likes) is scraped only when force_public=true or MATEAI_YT_PUBLIC_SCRAPE=1. "
             "When words_or_script_path is provided, maps each retention drop-off cliff onto the exact spoken words at that timestamp."
         ),
         "inputSchema": {
@@ -134,6 +135,11 @@ TOOLS = [
                 "words_or_script_path": {
                     "type": "string",
                     "description": "Optional local filesystem path to a readable Whisper words.js or JSON word-timestamp file used to align retention drop-off cliffs with spoken words.",
+                },
+                "force_public": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Opt in to scraping the public watch page for title/views/likes. Only set when the user asks for it.",
                 },
             },
             "required": ["video_id"],
@@ -353,7 +359,10 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "yt_video_details":
         video_id = args["video_id"]
         words_path = Path(args["words_or_script_path"]) if args.get("words_or_script_path") else None
-        details = fetch_video_public_details(video_id)
+        if PUBLIC_SCRAPE_ENV or bool(args.get("force_public", False)):
+            details = fetch_video_public_details(video_id)
+        else:
+            details = {"videoId": video_id, "url": f"https://www.youtube.com/watch?v={video_id}", "sourceMode": "studio_only"}
         try:
             diag = fetch_video_retention_diagnosis(video_id, words_or_script_path=words_path)
             details["studioDiagnosis"] = diag

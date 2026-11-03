@@ -31,7 +31,7 @@ Use this skill whenever the user asks to:
 - Edit an existing video's title, description, tags, privacy status, or thumbnail.
 
 ## Available MCP Tools (`mateai-youtube`)
-1. `yt_channel_snapshot(handle="@mateai-c6m", force_public=false)`: Pulls live Studio OAuth2 metrics (or falls back to zero-config Public Mode if no token exists) and writes `report.html`.
+1. `yt_channel_snapshot(handle="@mateai-c6m", force_public=false)`: Pulls live Studio OAuth2 metrics (without OAuth it returns setup instructions; pass `force_public=true` only if the user asks for public-page scraping) and writes `report.html`.
 2. `yt_shorts_experiment_table(handle="@mateai-c6m")`: Returns a formatted Markdown table comparing Shorts performance.
 3. `yt_video_details(video_id)`: Returns metadata and stats for a single 11-char video ID.
 4. `yt_upload_draft(video_path, spec_path, thumbnail_path, privacy_status="private", publish_at=None, auto_post_comment=false)`: Uploads a rendered video + Markdown spec (`## Title`, `## Description`, `## Tags`, `## Pinned comment`) to YouTube Studio as a draft or scheduled upload.

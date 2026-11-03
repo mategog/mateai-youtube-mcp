@@ -71,11 +71,18 @@ SCOPES_WITH_UPLOAD = SCOPES_READONLY + [
     "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
-BROWSER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
+# Public page scraping is opt-in: the default path is the official YouTube APIs via OAuth.
+# Enable it per call (force_public / --public) or always with MATEAI_YT_PUBLIC_SCRAPE=1.
+PUBLIC_SCRAPE_ENV = os.environ.get("MATEAI_YT_PUBLIC_SCRAPE") == "1"
+SCRAPE_DISABLED_MSG = (
+    "No YouTube OAuth credentials found, and public page scraping is off by default. "
+    "Run `python3 yt_studio.py setup` (with MATEAI_YT_HOME set to the plugin data folder) to connect "
+    "your channel through the official YouTube APIs, or opt in to public scraping with "
+    "force_public=true / --public, or MATEAI_YT_PUBLIC_SCRAPE=1."
+)
+
+HTTP_HEADERS = {
+    "User-Agent": "mateai-youtube-mcp (+https://github.com/mategog/mateai-youtube-mcp)",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
@@ -93,7 +100,7 @@ SSL_CONTEXT = _ssl_context()
 
 
 def _http_get(url: str) -> str:
-    req = urllib.request.Request(url, headers=BROWSER_HEADERS)
+    req = urllib.request.Request(url, headers=HTTP_HEADERS)
     with urllib.request.urlopen(req, timeout=15, context=SSL_CONTEXT) as resp:
         return resp.read().decode("utf-8", errors="replace")
 
@@ -816,16 +823,20 @@ def render_html_report(snapshot: dict[str, Any], out_path: Path = REPORT_FILE) -
 
 
 def get_best_snapshot(handle: str = DEFAULT_HANDLE, force_public: bool = False) -> dict[str, Any]:
-    """Use Studio OAuth if token/client_secret is ready, otherwise fallback to Public Snapshot."""
+    """Use Studio OAuth when configured; scrape public pages only when explicitly opted in."""
+    allow_scrape = force_public or PUBLIC_SCRAPE_ENV
     if not force_public and (TOKEN_FILE.exists() or DEFAULT_CLIENT_SECRET.exists()):
         try:
             snap = fetch_studio_channel_snapshot()
             CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
             return snap
         except Exception as exc:
-            if not force_public:
-                sys.stderr.write(f"[yt_studio] Studio OAuth unavailable ({exc}); using public snapshot.\n")
+            if not allow_scrape:
+                raise
+            sys.stderr.write(f"[yt_studio] Studio OAuth unavailable ({exc}); using public snapshot.\n")
 
+    if not allow_scrape:
+        raise RuntimeError(SCRAPE_DISABLED_MSG)
     snap = fetch_public_channel_snapshot(handle=handle)
     CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
     return snap

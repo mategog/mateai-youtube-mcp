@@ -1,9 +1,13 @@
 # Never commit OAuth secrets or tokens
 google_auth_secret/
+tiktok_auth_secret/
 client_secret*.json
+tiktok_client*.json
+tiktok_snapshot.json
 credentials.json
 token.json
 .tokens/
+.superpowers/
 *.pem
 *.key
 

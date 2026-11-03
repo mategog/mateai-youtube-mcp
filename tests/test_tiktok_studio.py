@@ -134,6 +134,17 @@ class TestTikTokPureLogic(unittest.TestCase):
             self.assertIn("AI-generated", res["aiLabelReminder"])
             mock_put.assert_called_once()
 
+    def test_mcp_server_registers_and_dispatches_tiktok_tools(self):
+        import json
+        from unittest.mock import patch
+        from mcp_server import TOOLS, _handle_tool_call
+        names = {t["name"] for t in TOOLS}
+        self.assertTrue({"tiktok_channel_snapshot", "tiktok_upload_draft", "cross_platform_shorts_table"}.issubset(names))
+        with patch("mcp_server.fetch_tiktok_snapshot", return_value={"channel": {"handle": "@mateai"}, "videos": [], "totals": {}}):
+            out = _handle_tool_call("tiktok_channel_snapshot", {})
+        payload = json.loads(out["content"][0]["text"])
+        self.assertEqual(payload["channel"]["handle"], "@mateai")
+
 
 if __name__ == "__main__":
     unittest.main()

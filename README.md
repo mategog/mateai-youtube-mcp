@@ -99,6 +99,9 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_upload_draft` | Upload a local MP4/MOV + cover image + full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment`, and **`publish_at` schedule**). |
 | `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
+| `tiktok_channel_snapshot` | Fetch official TikTok profile & video stats (`views`, `likes`, `comments`, `shares`) via TikTok Display API v2. |
+| `tiktok_upload_draft` | Upload a local MP4/MOV to your TikTok mobile app inbox via TikTok Content Posting API and return the ready-to-paste caption + AI disclosure reminder. |
+| `cross_platform_shorts_table` | Generate a side-by-side Markdown comparison table pairing your YouTube Shorts with your TikTok videos. |
 
 ---
 

@@ -226,6 +226,26 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 | Setup waits, then times out | The browser tab was closed. Rerun setup; it waits 5 minutes for the sign-in. |
 | Sign-in page rejects the redirect | The redirect URI in your TikTok app must be exactly `http://127.0.0.1:8765/callback/`. |
 | Channel handle is empty | The `user.info.profile` scope is missing. Enable it in your TikTok app and run setup again. |
+---
+
+## What this plugin runs, sends and fetches
+
+Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube (and to TikTok, only if you set up the optional TikTok connection), and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
+
+**The MCP server** (`mcp_server.py`, started by Claude Code as `python3 ${CLAUDE_PLUGIN_ROOT}/mcp_server.py`):
+- Calls Google's **YouTube Data API v3** and **YouTube Analytics API v2** with the scopes you approve at sign-in: read-only analytics, and optionally upload, edit metadata and post comments.
+- **Public mode (off by default):** fetches public `youtube.com` channel and video pages only when you opt in with `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`.
+- `yt_upload_draft` reads the video and cover files whose paths you give it and uploads them to your channel. `yt_update_video` and `yt_post_comment` change your video or post a comment, only when called.
+- Writes `channel_snapshot.json` and `report.html` (cached statistics for your own channel) to the plugin data folder.
+
+**The `/yt-setup` command** (a Claude Code mod in `hooks/`):
+- Looks for a `client_secret*.json` in the plugin data folder, your current project and `~/Downloads` (up to 5 folders deep), and copies a Desktop-app client into the data folder with `600` permissions. It never prints the file.
+- Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
+- Opens two Google Cloud pages (macOS `open`) and starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
+- Reads your saved token only to check which permissions it holds.
+- Works with macOS paths; on Windows use the manual wizard below.
+
+**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
 
 ---
 
@@ -238,7 +258,7 @@ If this saved you from paying for a monthly "Creator OS" subscription:
 
 ## License & Anti-Resale Protection
 
-Licensed under **Apache License 2.0 with Commons Clause Restriction v1.0** ([LICENSE](LICENSE)).
+Licensed under **Apache License 2.0 with Commons Clause Restriction v1.0** ([LICENSE](LICENSE)). This is a *source-available* license, not an OSI open-source one; GitHub may label the repository "Apache-2.0" because of the base text.
 
 - **Free for creators & developers:** You may freely use, modify, and share this tool for your own YouTube channels (including monetized channels).
 - **No commercial resale / paid SaaS wrapping:** You may **not** sell this software, bundle it into a paid product, or host it as a paid/managed MCP service without a commercial license from MateAI.

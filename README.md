@@ -124,6 +124,10 @@ This plugin integrates the **YouTube Strategy & Creator Skill Suite** directly a
 
 ---
 
+## Dashboard: `/yt-dashboard` (Claude Code 2.1.287+)
+
+Type **`/yt-dashboard`** to show or hide a channel card above the prompt: total views, subscribers, video count, and your latest five videos with a viewed-vs-swiped bar and its percentage. Desktop, VS Code and mobile draw it as a card; the terminal shows a text version. It reads the last `channel_snapshot.json`, and redraws whenever Claude runs `yt_channel_snapshot`, so the standalone `report.html` is optional.
+
 ## Easy Setup: `/yt-setup` (Claude Code)
 
 Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube account. You do this once. Everything stays on your computer; only Google sees your sign-in.

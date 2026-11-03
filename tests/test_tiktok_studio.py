@@ -74,6 +74,66 @@ class TestTikTokPureLogic(unittest.TestCase):
         self.assertIn("YouTube Only Short", md)  # unmatched rows are kept
         self.assertIn("TikTok Only Clip", md)
 
+    def test_missing_credentials_and_expired_refresh_token_raise_clear_errors(self):
+        from tiktok_studio import get_valid_tiktok_token
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_tok = Path(tmp) / ".tokens" / "tiktok_token.json"
+            missing_cli = Path(tmp) / "tiktok_client.json"
+            with self.assertRaisesRegex(RuntimeError, "tiktok_studio.py setup"):
+                get_valid_tiktok_token(token_file=missing_tok, client_file=missing_cli)
+
+            missing_tok.parent.mkdir(parents=True, exist_ok=True)
+            missing_tok.write_text('{"access_token":"old","refresh_token":"r","expires_at":10,"refresh_expires_at":20}', encoding="utf-8")
+            missing_cli.write_text('{"client_key":"ck","client_secret":"cs"}', encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "refresh token expired"):
+                get_valid_tiktok_token(token_file=missing_tok, client_file=missing_cli)
+
+    def test_expired_token_triggers_refresh_and_creates_tokens_dir_mode_0600(self):
+        from unittest.mock import patch
+        from tiktok_studio import get_valid_tiktok_token
+        with tempfile.TemporaryDirectory() as tmp:
+            tok_p = Path(tmp) / ".tokens" / "tiktok_token.json"
+            cli_p = Path(tmp) / "tiktok_client.json"
+            tok_p.parent.mkdir(parents=True, exist_ok=True)
+            tok_p.write_text('{"access_token":"old","refresh_token":"ref123","expires_at":100,"refresh_expires_at":9999999999}', encoding="utf-8")
+            cli_p.write_text('{"client_key":"ck","client_secret":"cs"}', encoding="utf-8")
+            with patch("tiktok_studio._post_form", return_value={"access_token": "new_tok", "refresh_token": "ref456", "expires_in": 86400, "refresh_expires_in": 31536000}):
+                token = get_valid_tiktok_token(token_file=tok_p, client_file=cli_p)
+            self.assertEqual(token, "new_tok")
+            self.assertEqual(tok_p.stat().st_mode & 0o777, 0o600)
+
+    def test_fetch_tiktok_snapshot_maps_user_info_and_video_list_fields(self):
+        from unittest.mock import patch
+        from tiktok_studio import fetch_tiktok_snapshot
+        user_resp = {"data": {"user": {"display_name": "MateAI", "username": "mateai", "follower_count": 450, "likes_count": 3200, "video_count": 5, "avatar_url": "https://example.com/a.jpg"}}}
+        videos_resp = {"data": {"videos": [{"id": "743001", "title": "", "video_description": "Carbon Short #AINews", "create_time": 1761696000, "duration": 42, "view_count": 4200, "like_count": 310, "comment_count": 28, "share_count": 45, "share_url": "https://www.tiktok.com/@mateai/video/743001"}], "has_more": False}}
+        with patch("tiktok_studio.get_valid_tiktok_token", return_value="tok"), patch("tiktok_studio._http_json", side_effect=[user_resp, videos_resp]):
+            snap = fetch_tiktok_snapshot()
+        self.assertEqual(snap["channel"]["handle"], "@mateai")
+        self.assertEqual(snap["videos"][0]["views"], 4200)
+        self.assertEqual(snap["videos"][0]["publishDate"], "2025-10-29")
+        self.assertEqual(snap["videos"][0]["url"], "https://www.tiktok.com/@mateai/video/743001")
+        self.assertEqual(snap["videos"][0]["videoDescription"], "Carbon Short #AINews")
+
+    def test_upload_inbox_draft_sends_source_info_only_and_returns_caption_and_ai_reminder(self):
+        from unittest.mock import patch
+        from tiktok_studio import upload_tiktok_inbox_draft
+        with tempfile.TemporaryDirectory() as tmp:
+            vid = Path(tmp) / "short.mp4"
+            vid.write_bytes(b"x" * 1024)
+            init_resp = {"data": {"publish_id": "pub_123", "upload_url": "https://upload.tiktokapis.com/put"}}
+            with patch("tiktok_studio.get_valid_tiktok_token", return_value="tok"), \
+                 patch("tiktok_studio._http_json", return_value=init_resp) as mock_init, \
+                 patch("tiktok_studio._put_chunk") as mock_put:
+                res = upload_tiktok_inbox_draft(video_path=vid, title="Carbon Short", hashtags=["#AINews", "#Shorts"])
+            sent_body = mock_init.call_args[1]["body"]
+            self.assertEqual(set(sent_body.keys()), {"source_info"})
+            self.assertEqual(sent_body["source_info"]["video_size"], 1024)
+            self.assertEqual(res["publishId"], "pub_123")
+            self.assertEqual(res["caption"], "Carbon Short\n\n#AINews")
+            self.assertIn("AI-generated", res["aiLabelReminder"])
+            mock_put.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

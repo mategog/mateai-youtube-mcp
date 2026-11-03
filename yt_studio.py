@@ -20,6 +20,7 @@ import html as html_lib
 import json
 import os
 import re
+import ssl
 import sys
 import urllib.parse
 import urllib.request
@@ -79,9 +80,21 @@ BROWSER_HEADERS = {
 }
 
 
+def _ssl_context() -> ssl.SSLContext:
+    # python.org macOS builds ship with no CA certificates until "Install Certificates.command"
+    # is run; fall back to the system bundle so HTTPS works without that manual step.
+    paths = ssl.get_default_verify_paths()
+    if not paths.cafile and not paths.capath and Path("/etc/ssl/cert.pem").exists():
+        return ssl.create_default_context(cafile="/etc/ssl/cert.pem")
+    return ssl.create_default_context()
+
+
+SSL_CONTEXT = _ssl_context()
+
+
 def _http_get(url: str) -> str:
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=15, context=SSL_CONTEXT) as resp:
         return resp.read().decode("utf-8", errors="replace")
 
 

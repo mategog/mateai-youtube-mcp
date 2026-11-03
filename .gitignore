@@ -18,3 +18,7 @@ build/
 
 # OS files
 .DS_Store
+
+# Generated locally: private channel statistics
+channel_snapshot.json
+report.html

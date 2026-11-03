@@ -43,27 +43,44 @@ TOOLS = [
     {
         "name": "yt_channel_snapshot",
         "description": (
-            "Fetch live YouTube channel stats, Long-form videos, Shorts performance, "
-            "and Studio analytics (retention, engaged views, swipe-away rate when OAuth is active). "
-            "Also updates the local report.html dashboard."
+            "Fetch live YouTube channel statistics, recent long-form videos, and Shorts metrics, and write an updated "
+            "local report.html dashboard and channel_snapshot.json cache on disk. "
+            "When YouTube OAuth2 credentials are present (and force_public is false), queries YouTube Data API v3 (~3 quota units) "
+            "and YouTube Analytics API v2 for private owner metrics (averageViewPercentage, swipedAwayRate, engagedViews, "
+            "estimatedMinutesWatched, subscribersGained); otherwise falls back to zero-config public HTML/RSS scraping with no API quota cost. "
+            "Overwrites report.html idempotently on each run."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "handle": {
                     "type": "string",
-                    "description": "YouTube channel handle (e.g. '@mateai-c6m'). Defaults to '@mateai-c6m'.",
+                    "pattern": "^@?[A-Za-z0-9._-]+$",
+                    "default": "@mateai-c6m",
+                    "description": "YouTube channel handle (with or without leading '@', e.g. '@mateai-c6m'). Defaults to '@mateai-c6m'.",
                 },
                 "force_public": {
                     "type": "boolean",
-                    "description": "If true, use zero-config public snapshot even if OAuth token exists.",
+                    "default": False,
+                    "description": "If true, bypass stored OAuth2 tokens and use zero-config public scraping only.",
                 },
             },
             "additionalProperties": False,
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "enum": ["studio_oauth", "public_scrape"]},
+                "channel": {"type": "object"},
+                "videos": {"type": "array", "items": {"type": "object"}},
+                "shorts": {"type": "array", "items": {"type": "object"}},
+                "dashboardPath": {"type": "string"},
+            },
+            "required": ["mode", "channel", "videos", "shorts", "dashboardPath"],
+        },
         "annotations": {
-            "title": "Fetch YouTube Channel Snapshot",
-            "readOnlyHint": True,
+            "title": "Fetch YouTube Channel Snapshot & Update Local Dashboard",
+            "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": True,
             "openWorldHint": True,
@@ -72,21 +89,25 @@ TOOLS = [
     {
         "name": "yt_shorts_experiment_table",
         "description": (
-            "Generate the Markdown experiment tracking table for Shorts visual styles "
-            "(Views, Viewed vs swiped, Avg % viewed, Engaged views, Subs gained)."
+            "Generate a GitHub-Flavored Markdown comparison table of the channel's YouTube Shorts ordered newest-first "
+            "with columns for Publish Date, Title, Views, Viewed vs Swiped Away %, Average % Viewed, Engaged Views, and Subscribers Gained. "
+            "Pulls live data from YouTube Data API v3 + YouTube Analytics API v2 when OAuth2 is configured (or public channel pages when unauthenticated, "
+            "where private retention columns are shown as '—'). Returns a 'No Shorts found' notice if the channel has no Shorts."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "handle": {
                     "type": "string",
-                    "description": "YouTube channel handle (default '@mateai-c6m').",
+                    "pattern": "^@?[A-Za-z0-9._-]+$",
+                    "default": "@mateai-c6m",
+                    "description": "YouTube channel handle (with or without leading '@', default '@mateai-c6m').",
                 },
             },
             "additionalProperties": False,
         },
         "annotations": {
-            "title": "Generate Shorts Experiment Table",
+            "title": "Generate Shorts Experiment Markdown Table",
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
@@ -96,26 +117,41 @@ TOOLS = [
     {
         "name": "yt_video_details",
         "description": (
-            "Fetch deep retention diagnosis (100-point retention curve, exact MM:SS drop-off cliffs, "
-            "YouTube peer percentiles, traffic sources, and optional spoken-word mapping) for a video or Short."
+            "Fetch public video metadata plus owner-authorized YouTube Analytics retention diagnostics for a single 11-character video_id: "
+            "100-point elapsedVideoTimeRatio audience retention curve, exact MM:SS drop-off cliffs, relativeRetentionPerformance peer percentiles, "
+            "and traffic source breakdown. Public metadata works without credentials; retention curve and traffic diagnostics require channel-owner OAuth2 "
+            "(if unauthenticated or called on a non-owned/private video, public metadata is returned with studioDiagnosisError explaining the missing scope). "
+            "When words_or_script_path is provided, maps each retention drop-off cliff onto the exact spoken words at that timestamp."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "video_id": {
                     "type": "string",
-                    "description": "11-character YouTube video ID (e.g. 'I9c6W135VZk').",
+                    "pattern": "^[A-Za-z0-9_-]{11}$",
+                    "description": "11-character YouTube video or Short ID (e.g. 'I9c6W135VZk').",
                 },
                 "words_or_script_path": {
                     "type": "string",
-                    "description": "Optional path to Whisper words.js / JSON timing file to map drop-off cliffs to exact spoken words.",
+                    "description": "Optional local filesystem path to a readable Whisper words.js or JSON word-timestamp file used to align retention drop-off cliffs with spoken words.",
                 },
             },
             "required": ["video_id"],
             "additionalProperties": False,
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "videoId": {"type": "string"},
+                "title": {"type": "string"},
+                "viewCount": {"type": "integer"},
+                "likeCount": {"type": "integer"},
+                "studioDiagnosis": {"type": "object"},
+            },
+            "required": ["videoId"],
+        },
         "annotations": {
-            "title": "Fetch Video Retention & Details",
+            "title": "Fetch Video Retention Curve & Drop-Off Diagnosis",
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
@@ -125,55 +161,72 @@ TOOLS = [
     {
         "name": "yt_upload_draft",
         "description": (
-            "Upload and configure a YouTube video or Short end-to-end. The AI can pass title, description, "
-            "hashtags, tags, language, category, synthetic-media disclosure, thumbnail, pinned comment, "
-            "and scheduled publish_at timestamp directly (or via a spec_path markdown file)."
+            "Upload a local MP4/MOV video file to YouTube Studio via YouTube Data API v3 (videos.insert, costs ~1,600 daily quota units) "
+            "and optionally attach a custom thumbnail (thumbnails.set) and top-level pinned comment (commentThreads.insert). "
+            "Requires channel OAuth2 with youtube.upload scope. Non-idempotent: each call creates a new YouTube video resource and returns "
+            "{videoId, studioUrl, watchUrl, privacyStatus, publishAt}. "
+            "Defaults to privacy_status='private' (unpublished draft); when publish_at (ISO 8601 future timestamp) is provided, privacy_status is forced to 'private' "
+            "until YouTube automatically publishes the video at publish_at. Inline parameters (title, description, tags, hashtags, pinned_comment) override values parsed from spec_path."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "video_path": {"type": "string", "description": "Absolute path to MP4/MOV file."},
-                "title": {"type": "string", "description": "Video title (up to 100 characters)."},
-                "description": {"type": "string", "description": "Full video description (up to 5000 characters)."},
+                "video_path": {"type": "string", "description": "Absolute local filesystem path to a readable MP4 or MOV video file to upload."},
+                "title": {"type": "string", "maxLength": 100, "description": "Video title (1–100 characters). Required unless spec_path provides a '## Title' section."},
+                "description": {"type": "string", "maxLength": 5000, "description": "Video description (up to 5,000 characters). Hashtags from 'hashtags' are appended if not already present."},
                 "hashtags": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Hashtags to append to description (e.g. ['#AINews', '#Shorts']).",
+                    "description": "Hashtags to append to the end of description (e.g. ['#AINews', '#Shorts']).",
                 },
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "YouTube SEO keyword tags.",
+                    "description": "YouTube SEO keyword tags (combined length up to 500 characters).",
                 },
-                "pinned_comment": {"type": "string", "description": "Top-level comment to post on the video."},
-                "spec_path": {"type": "string", "description": "Optional path to upload markdown file (fallback if title/description omitted)."},
-                "thumbnail_path": {"type": "string", "description": "Optional absolute path to thumbnail PNG/JPG."},
+                "pinned_comment": {"type": "string", "description": "Top-level comment text to post on the video when auto_post_comment is true."},
+                "spec_path": {"type": "string", "description": "Optional local path to a Markdown upload spec file ('## Title', '## Description', '## Tags', '## Pinned comment') used as fallback when inline fields are omitted."},
+                "thumbnail_path": {"type": "string", "description": "Optional absolute local path to a PNG/JPG custom thumbnail image (<=2MB, requires verified YouTube account)."},
                 "privacy_status": {
                     "type": "string",
                     "enum": ["private", "unlisted", "public"],
-                    "description": "Visibility in YouTube Studio (default: 'private'). Automatically set to 'private' when publish_at is used.",
+                    "default": "private",
+                    "description": "Initial visibility in YouTube Studio (default: 'private'). Forced to 'private' whenever publish_at is set.",
                 },
                 "publish_at": {
                     "type": "string",
-                    "description": "Optional ISO 8601 timestamp to schedule automatic publication (e.g. '2026-11-04T18:00:00+01:00').",
+                    "description": "Optional future ISO 8601 timestamp with timezone offset for scheduled publication (e.g. '2026-11-04T18:00:00+01:00'). Forces privacy_status='private' until release.",
                 },
-                "language": {"type": "string", "description": "BCP-47 language code for title/audio (default: 'en')."},
-                "category_id": {"type": "string", "description": "YouTube category ID (default: '28' for Science & Technology)."},
-                "made_for_kids": {"type": "boolean", "description": "Whether video is made for kids (default: false)."},
+                "language": {"type": "string", "default": "en", "description": "BCP-47 language code for defaultLanguage and defaultAudioLanguage (default: 'en')."},
+                "category_id": {"type": "string", "default": "28", "description": "YouTube numeric category ID (default: '28' for Science & Technology)."},
+                "made_for_kids": {"type": "boolean", "default": False, "description": "COPPA selfDeclaredMadeForKids flag (default: false)."},
                 "contains_synthetic_media": {
                     "type": "boolean",
-                    "description": "Altered/synthetic media disclosure flag in YouTube Studio (default: false).",
+                    "default": False,
+                    "description": "YouTube Studio altered/synthetic media disclosure flag (status.containsSyntheticMedia, default: false).",
                 },
                 "auto_post_comment": {
                     "type": "boolean",
-                    "description": "If true, automatically post the pinned_comment onto the video.",
+                    "default": False,
+                    "description": "If true and pinned_comment is non-empty, immediately posts pinned_comment as a top-level comment (requires video to allow comments).",
                 },
             },
             "required": ["video_path"],
             "additionalProperties": False,
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "videoId": {"type": "string"},
+                "studioUrl": {"type": "string"},
+                "watchUrl": {"type": "string"},
+                "privacyStatus": {"type": "string"},
+                "publishAt": {"type": ["string", "null"]},
+            },
+            "required": ["videoId", "studioUrl", "watchUrl"],
+        },
         "annotations": {
-            "title": "Upload Video Draft to YouTube Studio",
+            "title": "Upload Video Draft or Scheduled Release to YouTube Studio",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": False,
@@ -183,33 +236,53 @@ TOOLS = [
     {
         "name": "yt_update_video",
         "description": (
-            "Update an existing video's title, description, tags, privacy status, "
-            "scheduled publishAt timestamp, or thumbnail in YouTube Studio."
+            "Perform a partial, idempotent update on an existing YouTube video's metadata, visibility, schedule, or custom thumbnail "
+            "in YouTube Studio via YouTube Data API v3 (videos.list + videos.update, costs ~51 quota units). Requires channel-owner OAuth2. "
+            "Fetches current snippet/status first so omitted parameters (title, description, tags, privacy_status, publish_at) are preserved unchanged rather than cleared. "
+            "Setting publish_at automatically forces privacy_status='private' as required by YouTube's scheduling API. Returns {videoId, studioUrl, updatedFields}."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "video_id": {"type": "string", "description": "11-character YouTube video ID."},
-                "title": {"type": "string", "description": "New video title (up to 100 characters)."},
-                "description": {"type": "string", "description": "New video description (up to 5000 characters)."},
+                "video_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{11}$",
+                    "description": "11-character YouTube video ID to update.",
+                },
+                "title": {"type": "string", "maxLength": 100, "description": "New video title (1–100 characters). Leave omitted to keep existing title."},
+                "description": {"type": "string", "maxLength": 5000, "description": "New video description (up to 5,000 characters). Leave omitted to keep existing description."},
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Updated list of YouTube SEO keyword tags.",
+                    "description": "Replacement list of YouTube SEO keyword tags. Leave omitted to keep existing tags.",
                 },
                 "privacy_status": {
                     "type": "string",
                     "enum": ["private", "unlisted", "public"],
-                    "description": "Updated visibility status in YouTube Studio.",
+                    "description": "Updated visibility status. Ignored and forced to 'private' if publish_at is provided.",
                 },
-                "publish_at": {"type": "string", "description": "ISO 8601 schedule time (e.g. '2026-11-05T17:00:00+01:00')."},
-                "thumbnail_path": {"type": "string", "description": "Optional absolute path to new thumbnail image."},
+                "publish_at": {
+                    "type": "string",
+                    "description": "Future ISO 8601 timestamp with timezone offset to schedule publication (e.g. '2026-11-05T17:00:00+01:00'). Forces privacy_status='private'.",
+                },
+                "thumbnail_path": {
+                    "type": "string",
+                    "description": "Optional absolute local filesystem path to a readable PNG/JPG image (<=2MB) to upload via thumbnails.set.",
+                },
             },
             "required": ["video_id"],
             "additionalProperties": False,
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "videoId": {"type": "string"},
+                "studioUrl": {"type": "string"},
+            },
+            "required": ["videoId", "studioUrl"],
+        },
         "annotations": {
-            "title": "Update Existing YouTube Video Metadata",
+            "title": "Update Existing YouTube Video Metadata, Schedule, or Thumbnail",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": True,
@@ -218,18 +291,41 @@ TOOLS = [
     },
     {
         "name": "yt_post_comment",
-        "description": "Post a top-level comment on a YouTube video or Short.",
+        "description": (
+            "Post a public top-level comment thread on a YouTube video or Short via YouTube Data API v3 "
+            "(commentThreads.insert, costs ~50 daily quota units). Requires OAuth2 with youtube.force-ssl scope. "
+            "Non-idempotent: each call publishes a new visible comment immediately under the authenticated channel identity "
+            "and returns {commentId, videoId, text}. Fails if comments are disabled on the target video or the video is private."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "video_id": {"type": "string", "description": "11-character YouTube video ID."},
-                "text": {"type": "string", "description": "Comment text to post."},
+                "video_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{11}$",
+                    "description": "11-character YouTube video ID where the top-level comment will be posted.",
+                },
+                "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000,
+                    "description": "Plain-text comment body (1–10,000 characters) to publish publicly on the video.",
+                },
             },
             "required": ["video_id", "text"],
             "additionalProperties": False,
         },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "commentId": {"type": "string"},
+                "videoId": {"type": "string"},
+                "text": {"type": "string"},
+            },
+            "required": ["commentId", "videoId"],
+        },
         "annotations": {
-            "title": "Post Top-Level YouTube Comment",
+            "title": "Post Public Top-Level YouTube Comment",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": False,

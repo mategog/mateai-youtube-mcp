@@ -1,11 +1,6 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "name": "mateai-youtube-mcp",
-  "description": "Free, self-hosted YouTube Studio & Analytics MCP connector for Antigravity and Claude Code. Pull Shorts retention, swipe-away rates, watch time, and upload private drafts without paid SaaS middlemen.",
-  "author": {
-    "name": "MateAI",
-    "url": "https://www.youtube.com/@mateai-c6m"
-  },
-  "repository": "https://github.com/mategog/mateai-youtube-mcp",
-  "license": "Apache-2.0 WITH Commons-Clause"
+  "maintainers": [
+    "mategog"
+  ]
 }

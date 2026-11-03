@@ -28,9 +28,16 @@ from yt_studio import (
 
 SERVER_INFO = {
     "name": "mateai-youtube-mcp",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": AUTHOR_ATTRIBUTION,
 }
+
+SERVER_INSTRUCTIONS = (
+    "Self-hosted YouTube Studio & Analytics MCP server. "
+    "Use yt_channel_snapshot and yt_shorts_experiment_table to inspect channel performance and render report.html. "
+    "Use yt_video_details to diagnose 100-point audience retention curves, drop-off cliffs, and traffic sources for a 11-char video_id. "
+    "Use yt_upload_draft, yt_update_video, and yt_post_comment to upload/schedule videos, update metadata/thumbnails, and post comments in YouTube Studio."
+)
 
 TOOLS = [
     {
@@ -52,6 +59,14 @@ TOOLS = [
                     "description": "If true, use zero-config public snapshot even if OAuth token exists.",
                 },
             },
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Fetch YouTube Channel Snapshot",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
     {
@@ -68,6 +83,14 @@ TOOLS = [
                     "description": "YouTube channel handle (default '@mateai-c6m').",
                 },
             },
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Generate Shorts Experiment Table",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
     {
@@ -89,6 +112,14 @@ TOOLS = [
                 },
             },
             "required": ["video_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Fetch Video Retention & Details",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
     {
@@ -139,6 +170,14 @@ TOOLS = [
                 },
             },
             "required": ["video_path"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Upload Video Draft to YouTube Studio",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
         },
     },
     {
@@ -151,14 +190,30 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "video_id": {"type": "string", "description": "11-character YouTube video ID."},
-                "title": {"type": "string"},
-                "description": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}},
-                "privacy_status": {"type": "string", "enum": ["private", "unlisted", "public"]},
+                "title": {"type": "string", "description": "New video title (up to 100 characters)."},
+                "description": {"type": "string", "description": "New video description (up to 5000 characters)."},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Updated list of YouTube SEO keyword tags.",
+                },
+                "privacy_status": {
+                    "type": "string",
+                    "enum": ["private", "unlisted", "public"],
+                    "description": "Updated visibility status in YouTube Studio.",
+                },
                 "publish_at": {"type": "string", "description": "ISO 8601 schedule time (e.g. '2026-11-05T17:00:00+01:00')."},
                 "thumbnail_path": {"type": "string", "description": "Optional absolute path to new thumbnail image."},
             },
             "required": ["video_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Update Existing YouTube Video Metadata",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
         },
     },
     {
@@ -171,6 +226,14 @@ TOOLS = [
                 "text": {"type": "string", "description": "Comment text to post."},
             },
             "required": ["video_id", "text"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Post Top-Level YouTube Comment",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
         },
     },
 ]
@@ -255,18 +318,21 @@ def main() -> None:
         msg_id = msg.get("id")
 
         if method == "initialize":
+            params = msg.get("params") or {}
+            client_proto = params.get("protocolVersion") or "2024-11-05"
             resp = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
+                    "protocolVersion": client_proto,
+                    "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": SERVER_INFO,
+                    "instructions": SERVER_INSTRUCTIONS,
                 },
             }
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()
-        elif method == "notifications/initialized":
+        elif method and method.startswith("notifications/"):
             continue
         elif method == "ping":
             sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {}}) + "\n")
@@ -276,6 +342,30 @@ def main() -> None:
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "result": {"tools": TOOLS},
+            }
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+        elif method == "prompts/list":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"prompts": []},
+            }
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+        elif method == "resources/list":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"resources": []},
+            }
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+        elif method == "resources/templates/list":
+            resp = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"resourceTemplates": []},
             }
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()

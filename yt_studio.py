@@ -27,31 +27,34 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-for _sp in sorted((HERE / ".venv" / "lib").glob("python*/site-packages")):
+# State (venv, tokens, OAuth secret, snapshot, report) lives in MATEAI_YT_HOME when set
+# (the Claude Code plugin points it at ${CLAUDE_PLUGIN_DATA}), else next to this file.
+STATE_DIR = Path(os.environ.get("MATEAI_YT_HOME") or HERE).expanduser()
+for _sp in sorted((STATE_DIR / ".venv" / "lib").glob("python*/site-packages")):
     if str(_sp) not in sys.path:
         sys.path.insert(0, str(_sp))
 
-TOKEN_FILE = HERE / ".tokens" / "token.json"
+TOKEN_FILE = STATE_DIR / ".tokens" / "token.json"
 
 
 def _resolve_default_client_secret() -> Path:
-    direct = HERE / "client_secret.json"
+    direct = STATE_DIR / "client_secret.json"
     if direct.exists():
         return direct
-    secret_dir = HERE / "google_auth_secret"
+    secret_dir = STATE_DIR / "google_auth_secret"
     if secret_dir.is_dir():
         matches = sorted(secret_dir.glob("client_secret*.json"))
         if matches:
             return matches[0]
-    root_matches = sorted(HERE.glob("client_secret*.json"))
+    root_matches = sorted(STATE_DIR.glob("client_secret*.json"))
     if root_matches:
         return root_matches[0]
     return direct
 
 
 DEFAULT_CLIENT_SECRET = _resolve_default_client_secret()
-CACHE_FILE = HERE / "channel_snapshot.json"
-REPORT_FILE = HERE / "report.html"
+CACHE_FILE = STATE_DIR / "channel_snapshot.json"
+REPORT_FILE = STATE_DIR / "report.html"
 TEMPLATE_FILE = HERE / "report_template.html"
 
 DEFAULT_HANDLE = "@mateai-c6m"
@@ -846,12 +849,12 @@ def run_interactive_setup_wizard() -> None:
     print("=" * 72)
 
     # Step 1: Ensure .venv and Google API client packages exist
-    venv_py = HERE / ".venv" / "bin" / "python"
+    venv_py = STATE_DIR / ".venv" / "bin" / "python"
     if not venv_py.exists():
         print("\n[1/4] Creating local Python virtualenv (.venv) and installing Google API SDK...")
-        subprocess.run([sys.executable, "-m", "venv", str(HERE / ".venv")], check=True)
-        subprocess.run([str(HERE / ".venv" / "bin" / "pip"), "install", "-q", "-r", str(HERE / "requirements.txt")], check=True)
-        for sp in sorted((HERE / ".venv" / "lib").glob("python*/site-packages")):
+        subprocess.run([sys.executable, "-m", "venv", str(STATE_DIR / ".venv")], check=True)
+        subprocess.run([str(STATE_DIR / ".venv" / "bin" / "pip"), "install", "-q", "-r", str(HERE / "requirements.txt")], check=True)
+        for sp in sorted((STATE_DIR / ".venv" / "lib").glob("python*/site-packages")):
             if str(sp) not in sys.path:
                 sys.path.insert(0, str(sp))
     else:
@@ -882,7 +885,7 @@ def run_interactive_setup_wizard() -> None:
         webbrowser.open("https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com")
 
     # Step 3: Check or watch for client_secret.json
-    secret_dir = HERE / "google_auth_secret"
+    secret_dir = STATE_DIR / "google_auth_secret"
     secret_dir.mkdir(parents=True, exist_ok=True)
     secret_path = _resolve_default_client_secret()
 
@@ -895,10 +898,10 @@ def run_interactive_setup_wizard() -> None:
 
         downloads = Path.home() / "Downloads"
         desktop = Path.home() / "Desktop"
-        print("\n      👀 Watching ~/Downloads and ./google_auth_secret/ for client_secret*.json (Ctrl+C to cancel)...")
+        print(f"\n      👀 Watching ~/Downloads and {secret_dir} for client_secret*.json (Ctrl+C to cancel)...")
         found_file: Path | None = None
         while not found_file:
-            for folder in (secret_dir, HERE, downloads, desktop):
+            for folder in (secret_dir, STATE_DIR, downloads, desktop):
                 if not folder.exists():
                     continue
                 matches = sorted(folder.glob("client_secret*.json"), key=lambda p: p.stat().st_mtime, reverse=True)

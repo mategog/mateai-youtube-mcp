@@ -1,5 +1,16 @@
 {
   "name": "yt-studio",
-  "version": "1.0.0",
-  "description": "Self-hosted YouTube Studio & Analytics connector (MCP + Skill + Dashboard) by MateAI (@mateai-c6m)."
+  "version": "1.0.2",
+  "description": "Self-hosted YouTube Studio & Analytics connector (MCP + Skill + Dashboard) by MateAI (@mateai-c6m).",
+  "author": {
+    "name": "MateAI",
+    "url": "https://www.youtube.com/@mateai-c6m"
+  },
+  "mcpServers": {
+    "mateai-youtube": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp_server.py"],
+      "env": {"MATEAI_YT_HOME": "${CLAUDE_PLUGIN_DATA}"}
+    }
+  }
 }

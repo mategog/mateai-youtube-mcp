@@ -57,6 +57,15 @@ claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
+The plugin keeps its state (`.venv`, OAuth secret, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates. Public snapshots work right away; to unlock private Studio analytics and uploads, run the setup wizard with `MATEAI_YT_HOME` pointing at that folder so everything lands there:
+
+```bash
+MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
+  python3 ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/1.0.2/yt_studio.py setup
+```
+
+Replace `1.0.2` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
+
 ### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
 {

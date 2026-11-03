@@ -14,6 +14,8 @@ from typing import Any
 
 from tiktok_studio import (
     TIKTOK_CACHE_FILE,
+    TIKTOK_HISTORY_FILE,
+    append_tiktok_history,
     build_cross_platform_table,
     fetch_tiktok_snapshot,
     upload_tiktok_inbox_draft,
@@ -445,6 +447,7 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "tiktok_channel_snapshot":
         snap = fetch_tiktok_snapshot()
         TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+        append_tiktok_history(snap, history_file=TIKTOK_HISTORY_FILE)
         return {"content": [{"type": "text", "text": json.dumps(snap, indent=2)}]}
 
     if name == "tiktok_upload_draft":

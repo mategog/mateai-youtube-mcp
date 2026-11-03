@@ -38,6 +38,13 @@ Use this skill whenever the user asks to:
 5. `yt_update_video(video_id, title, description, tags, privacy_status, publish_at, thumbnail_path)`: Updates packaging or schedule of an existing video.
 6. `yt_post_comment(video_id, text)`: Posts a top-level comment on a video.
 
+### TikTok tools (same server)
+7. `tiktok_channel_snapshot()`: Official TikTok Display API stats for the connected account (public videos only).
+8. `tiktok_upload_draft(video_path, spec_path, title, hashtags)`: Sends a Short to the TikTok inbox as a draft; the owner finishes the post in the app.
+9. `cross_platform_shorts_table(yt_handle, yt_force_public)`: YouTube Shorts vs TikTok comparison table.
+
+For rules, limits and what is not built yet, read `skills/tiktok-studio/SKILL.md`.
+
 ## CLI Fallback Commands
 If running via terminal from `/Users/mategog/Documents/Yt/MateAI/builds/03-yt-studio-mcp`:
 

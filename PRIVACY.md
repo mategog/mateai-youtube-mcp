@@ -20,6 +20,7 @@ Everything is saved locally, in the plugin's data folder (`~/.claude/plugins/dat
 - `tiktok_auth_secret/tiktok_client.json`: the TikTok Desktop app client credentials you configured, with file mode 0600
 - `.tokens/tiktok_token.json`: your TikTok OAuth token, with file mode 0600
 - `tiktok_snapshot.json`: cached TikTok profile and video statistics
+- `tiktok_history.jsonl`: one line of TikTok counts (followers, likes, per-video views/likes/comments/shares) appended each time `tiktok_channel_snapshot` runs, with file mode 0600
 
 Nothing is sent anywhere except Google/YouTube (and TikTok when you use the optional TikTok tools). The statistics the tools return go into your Claude conversation, under Anthropic's own privacy terms.
 

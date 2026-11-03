@@ -4,6 +4,7 @@ tiktok_auth_secret/
 client_secret*.json
 tiktok_client*.json
 tiktok_snapshot.json
+tiktok_history.jsonl
 credentials.json
 token.json
 .tokens/

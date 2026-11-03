@@ -221,7 +221,7 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 - **Switch on the AI-generated label yourself.** If your video uses a synthetic voice or AI visuals, turn on TikTok's AI-generated content toggle in the app before posting. The API cannot set it.
 - **Matching is by title.** The comparison table pairs a Short with a TikTok when the title (hashtags ignored) matches the TikTok title or description. Anything else shows up as its own row, with "—" for the missing platform.
 - **Only official numbers.** TikTok's API gives views, likes, comments and shares. Retention-style metrics exist for YouTube only.
-- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`. Details in [PRIVACY.md](PRIVACY.md).
+- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`, and every `tiktok_channel_snapshot` call also appends a counts row to `tiktok_history.jsonl` so growth can be measured later. Details in [PRIVACY.md](PRIVACY.md).
 
 | Problem | Fix |
 | --- | --- |

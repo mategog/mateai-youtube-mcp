@@ -20,6 +20,7 @@ That is what this plugin does. It connects **Claude Code / Claude Desktop** or *
 - **Upload and schedule:** video, custom cover, title, description, hashtags, tags, language, synthetic-media disclosure and a future publish time.
 - **Edit and engage:** update metadata on existing videos and post comments.
 - **Analyze:** retention, Viewed vs. swiped away, engaged views, watch time and subscribers gained, per video, with a local `report.html` dashboard.
+- **Compare with TikTok (optional):** connect your TikTok account through TikTok's official API to pull its stats, send a Short to your TikTok app inbox with a ready-to-paste caption, and see your YouTube Shorts and TikToks side by side. See [TikTok](#tiktok-optional).
 
 Hosted "creator OS" tools charge $19-$49 a month to wrap those same free Google APIs. Here nothing sits between your AI and YouTube: it runs **100% on your machine**, your login stays in a local file only you can read, and the plugin costs **$0**. Connecting takes one command, **`/yt-setup`** (see [Easy Setup](#easy-setup-yt-setup-claude-code)).
 
@@ -91,6 +92,9 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 ```
 
 ### Exposed MCP Tools
+
+**YouTube**
+
 | Tool | Description |
 |---|---|
 | `yt_channel_snapshot` | Fetch channel overview, Long-form uploads, Shorts stats, and update `report.html`. |
@@ -100,6 +104,14 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
 
+**TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
+
+| Tool | Description |
+|---|---|
+| `tiktok_channel_snapshot` | Fetch your TikTok profile stats and recent videos (views, likes, comments, shares) through TikTok's official API. |
+| `tiktok_upload_draft` | Send a local MP4/MOV to your TikTok app inbox and return the caption to paste, plus a reminder to switch on TikTok's AI-generated label. It does not publish for you. |
+| `cross_platform_shorts_table` | Markdown table that pairs each YouTube Short with the same video on TikTok (views, likes, comments, YouTube avg % viewed, TikTok shares). Videos that exist on only one platform get their own row. |
+
 ---
 
 ## Bundled YouTube Strategy & Creator Skills (Full Pipeline)
@@ -108,7 +120,7 @@ This plugin integrates the **YouTube Strategy & Creator Skill Suite** directly a
 
 - **Production Pipeline Skills** (`yt-research`, `yt-ideation`, `yt-brief`, `yt-packaging`, `yt-outline`, plus `/yt-pipeline` command and `yt-scraper`, `channel-analyzer`, `idea-validator` agents) — created by **[Jeremy Longshore (`@jeremylongshore` / Intent Solutions)](https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy)** (`@intentsolutionsio/youtube-strategy`, MIT).
 - **14 Creator Sub-Skills & Playbooks** (`audit`, `seo`, `script`, `hook`, `thumbnail`, `strategy`, `calendar`, `shorts`, `analyze`, `repurpose`, `monetize`, `competitor`, `metadata`, `ideate`) — created by **[Daniel Agrici (`@AgriciDaniel`)](https://github.com/AgriciDaniel/claude-youtube)** (`claude-youtube`, MIT).
-- **Live YouTube Studio Execution & Analytics MCP** (`yt_channel_snapshot`, `yt_shorts_experiment_table`, `yt_upload_draft`, `yt_update_video`, `yt_post_comment`, interactive `report.html` dashboard & 1-command `setup` wizard) — built by **[MateAI (`@mateai-c6m`)](https://www.youtube.com/@mateai-c6m)**.
+- **Live YouTube Studio Execution & Analytics MCP** (`yt_channel_snapshot`, `yt_shorts_experiment_table`, `yt_upload_draft`, `yt_update_video`, `yt_post_comment`, optional TikTok tools, interactive `report.html` dashboard & 1-command `setup` wizard) — built by **[MateAI (`@mateai-c6m`)](https://www.youtube.com/@mateai-c6m)**.
 
 ---
 
@@ -167,9 +179,58 @@ What `python3 yt_studio.py setup` does automatically:
 
 ---
 
+## TikTok (optional)
+
+Cross-post your Shorts and see how they do on both platforms. This uses TikTok's official, free developer API only: no cookies, no scraping. It never publishes for you; a video lands in your TikTok app inbox and you tap Post yourself. Everything stays on your machine, and the YouTube tools work the same whether or not you set this up.
+
+**What you can ask your AI**
+
+> "Send `exports/short.mp4` to my TikTok inbox with the caption from `planning/my-short-upload.md`."
+>
+> "Show my YouTube Shorts next to the same videos on TikTok."
+
+**Connect TikTok (once)**
+
+1. Create an app at [developers.tiktok.com](https://developers.tiktok.com/) and choose the **Desktop** platform.
+2. Add the redirect URI `http://127.0.0.1:8765/callback/` (exactly, with the trailing slash).
+3. Enable these scopes: `user.info.basic`, `user.info.profile`, `user.info.stats`, `video.list`, `video.upload`.
+4. Run the wizard. It asks for your app's Client Key and Client Secret, opens TikTok's sign-in in your browser, and saves the token locally:
+
+```bash
+python3 tiktok_studio.py setup
+```
+
+If you installed the plugin, point it at the plugin's data folder first, the same way as for the YouTube wizard: `MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp python3 tiktok_studio.py setup`.
+
+**Command line**
+
+```bash
+python3 tiktok_studio.py snapshot                                   # profile and recent videos
+python3 tiktok_studio.py upload-draft --video exports/short.mp4 \
+  --spec planning/my-short-upload.md                                # send to your TikTok inbox
+python3 tiktok_studio.py cross-table                                # YouTube Shorts vs TikTok
+```
+
+**Good to know**
+
+- **Captions are pasted by hand.** TikTok's inbox upload cannot take a caption. `tiktok_upload_draft` builds one from your upload spec (title plus the `#hashtags` in the description, `#Shorts` removed) and returns it for you to paste in the app.
+- **Switch on the AI-generated label yourself.** If your video uses a synthetic voice or AI visuals, turn on TikTok's AI-generated content toggle in the app before posting. The API cannot set it.
+- **Matching is by title.** The comparison table pairs a Short with a TikTok when the title (hashtags ignored) matches the TikTok title or description. Anything else shows up as its own row, with "—" for the missing platform.
+- **Only official numbers.** TikTok's API gives views, likes, comments and shares. Retention-style metrics exist for YouTube only.
+- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`. Details in [PRIVACY.md](PRIVACY.md).
+
+| Problem | Fix |
+| --- | --- |
+| "No TikTok OAuth token found" | Run `python3 tiktok_studio.py setup`. |
+| "TikTok refresh token expired" | Run `python3 tiktok_studio.py setup` again to sign in. |
+| Setup waits, then times out | The browser tab was closed. Rerun setup; it waits 5 minutes for the sign-in. |
+| Sign-in page rejects the redirect | The redirect URI in your TikTok app must be exactly `http://127.0.0.1:8765/callback/`. |
+| Channel handle is empty | The `user.info.profile` scope is missing. Enable it in your TikTok app and run setup again. |
+---
+
 ## What this plugin runs, sends and fetches
 
-Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube, and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
+Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube (and to TikTok, only if you set up the optional TikTok connection), and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
 
 **The MCP server** (`mcp_server.py`, started by Claude Code as `python3 ${CLAUDE_PLUGIN_ROOT}/mcp_server.py`):
 - Calls Google's **YouTube Data API v3** and **YouTube Analytics API v2** with the scopes you approve at sign-in: read-only analytics, and optionally upload, edit metadata and post comments.

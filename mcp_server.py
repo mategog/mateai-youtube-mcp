@@ -12,6 +12,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tiktok_studio import (
+    TIKTOK_CACHE_FILE,
+    build_cross_platform_table,
+    fetch_tiktok_snapshot,
+    upload_tiktok_inbox_draft,
+)
 from yt_studio import (
     AUTHOR_ATTRIBUTION,
     DEFAULT_HANDLE,
@@ -338,10 +344,126 @@ TOOLS = [
             "openWorldHint": True,
         },
     },
+    {
+        "name": "tiktok_channel_snapshot",
+        "description": (
+            "Fetch authenticated TikTok profile statistics (followers, total likes, video count) and recent videos "
+            "(views, likes, comments, shares, duration, publish date, share URL) via the official TikTok Display API v2 "
+            "(user.info.basic, user.info.profile, user.info.stats, video.list) and cache to tiktok_snapshot.json. "
+            "Requires OAuth2 setup via `python3 tiktok_studio.py setup`."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Fetch Official TikTok Profile & Video Snapshot",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "tiktok_upload_draft",
+        "description": (
+            "Upload a local MP4/MOV video file as an Inbox Draft to the creator's TikTok mobile app notifications "
+            "via the official TikTok Content Posting API (/v2/post/publish/inbox/video/init/, which accepts source_info only). "
+            "Builds and returns the ready-to-paste caption (from spec_path or title/hashtags, with #Shorts stripped) "
+            "plus an AI-generated content label reminder so the creator can paste the caption and turn on TikTok's "
+            "AI-generated toggle in the mobile app before publishing."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_path": {
+                    "type": "string",
+                    "description": "Absolute local filesystem path to a readable MP4/MOV video file.",
+                },
+                "spec_path": {
+                    "type": "string",
+                    "description": "Optional absolute path to a MateAI upload Markdown spec (## Title, ## Description, ## Tags).",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional caption title override (used when spec_path is omitted or to override ## Title).",
+                },
+                "hashtags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of hashtags to append to the returned caption.",
+                },
+            },
+            "required": ["video_path"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Upload Video to TikTok App Inbox & Return Caption",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "cross_platform_shorts_table",
+        "description": (
+            "Generate a GitHub-Flavored Markdown comparison table pairing YouTube Shorts with TikTok videos "
+            "(matching normalized YouTube Short titles against TikTok title or video_description, while keeping unmatched "
+            "videos from either platform) across official API metrics: Views, Likes, Comments, YouTube Avg % Viewed, and TikTok Shares."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "yt_handle": {
+                    "type": "string",
+                    "pattern": "^@?[A-Za-z0-9._-]+$",
+                    "default": "@mateai-c6m",
+                    "description": "YouTube channel handle (default '@mateai-c6m').",
+                },
+                "yt_force_public": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, allow public scraping fallback for the YouTube snapshot.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Generate YouTube Shorts vs. TikTok Comparison Table",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
 ]
 
 
 def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name == "tiktok_channel_snapshot":
+        snap = fetch_tiktok_snapshot()
+        TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+        return {"content": [{"type": "text", "text": json.dumps(snap, indent=2)}]}
+
+    if name == "tiktok_upload_draft":
+        res = upload_tiktok_inbox_draft(
+            video_path=Path(args["video_path"]),
+            spec_path=Path(args["spec_path"]) if args.get("spec_path") else None,
+            title=args.get("title"),
+            hashtags=args.get("hashtags"),
+        )
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "cross_platform_shorts_table":
+        yt_handle = args.get("yt_handle") or DEFAULT_HANDLE
+        yt_force_public = bool(args.get("yt_force_public", False))
+        yt_snap = get_best_snapshot(handle=yt_handle, force_public=yt_force_public)
+        tt_snap = fetch_tiktok_snapshot()
+        md = build_cross_platform_table(yt_snap, tt_snap)
+        return {"content": [{"type": "text", "text": md}]}
+
     if name == "yt_channel_snapshot":
         handle = args.get("handle") or DEFAULT_HANDLE
         force_public = bool(args.get("force_public", False))

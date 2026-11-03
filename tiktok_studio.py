@@ -53,6 +53,11 @@ SINGLE_CHUNK_MAX_BYTES = 64_000_000
 MULTI_CHUNK_SIZE_BYTES = 32_000_000
 PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 HASHTAG_RE = re.compile(r"(?<!\w)#[A-Za-z][A-Za-z0-9_]*")
+VIDEO_CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+}
 
 AI_LABEL_REMINDER = (
     "Turn on TikTok's AI-generated content toggle in the mobile app before posting "
@@ -94,16 +99,21 @@ def parse_tiktok_caption_from_spec(
     hashtags: list[str] | None = None,
 ) -> str:
     """Build a ready-to-paste TikTok caption (<=2200 chars) from an upload Markdown spec or explicit title/hashtags."""
+    if spec_path is not None and not spec_path.exists():
+        raise FileNotFoundError(f"Upload spec file not found: {spec_path}")
     meta = (
         parse_upload_markdown(spec_path)
-        if (spec_path and spec_path.exists())
+        if spec_path is not None
         else {"title": "", "description": "", "tags": []}
     )
     final_title = (title if title is not None else meta.get("title", "")).strip()
 
     raw_tags: list[str] = []
     if hashtags is not None:
-        raw_tags = [h if h.startswith("#") else f"#{h}" for h in hashtags if h.strip()]
+        for h in hashtags:
+            cleaned = re.sub(r"\s+", "", h.strip()).lstrip("#")
+            if cleaned:
+                raw_tags.append(f"#{cleaned}")
     else:
         desc = meta.get("description") or ""
         raw_tags = HASHTAG_RE.findall(desc)
@@ -145,6 +155,11 @@ def _fmt_pct(val: Any) -> str:
     return f"{float(val):.1f}%" if val is not None else "—"
 
 
+def _escape_table_cell(text: str) -> str:
+    single_line = re.sub(r"\s+", " ", (text or "").replace("\r", " ").replace("\n", " ")).strip()
+    return single_line.replace("|", r"\|")
+
+
 def build_cross_platform_table(yt_snapshot: dict[str, Any], tt_snapshot: dict[str, Any]) -> str:
     """Build a Markdown table comparing YouTube Shorts and TikTok videos on official API fields."""
     lines = [
@@ -169,7 +184,8 @@ def build_cross_platform_table(yt_snapshot: dict[str, Any], tt_snapshot: dict[st
                     matched_tt_indices.add(idx)
                     break
 
-        display_title = re.sub(r"\s*#Shorts\b", "", yv.get("title") or yv.get("videoId", ""), flags=re.IGNORECASE).strip()
+        raw_yt_title = re.sub(r"\s*#Shorts\b", "", yv.get("title") or yv.get("videoId", ""), flags=re.IGNORECASE).strip()
+        display_title = _escape_table_cell(raw_yt_title)
         pub = yv.get("publishDate") or (matched_tt.get("publishDate") if matched_tt else None) or "—"
         lines.append(
             f"| {display_title} | {pub} | {_fmt_int(yv.get('views'))} | "
@@ -186,7 +202,8 @@ def build_cross_platform_table(yt_snapshot: dict[str, Any], tt_snapshot: dict[st
         if idx in matched_tt_indices:
             continue
         raw_label = (tv.get("title") or tv.get("videoDescription") or tv.get("videoId") or "TikTok Video").strip()
-        display_title = re.sub(r"(?<!\w)#\w+", "", raw_label).strip() or raw_label
+        stripped_label = re.sub(r"(?<!\w)#\w+", "", raw_label).strip() or raw_label
+        display_title = _escape_table_cell(stripped_label)
         pub = tv.get("publishDate") or "—"
         lines.append(
             f"| {display_title} | {pub} | — | {_fmt_int(tv.get('views'))} | "
@@ -234,12 +251,19 @@ def _http_json(url: str, *, token: str, body: dict[str, Any] | None = None) -> d
     return payload
 
 
-def _put_chunk(upload_url: str, data: bytes, start: int, end: int, total: int) -> None:
+def _put_chunk(
+    upload_url: str,
+    data: bytes,
+    start: int,
+    end: int,
+    total: int,
+    content_type: str = "video/mp4",
+) -> None:
     req = urllib.request.Request(
         upload_url,
         data=data,
         headers={
-            "Content-Type": "video/mp4",
+            "Content-Type": content_type,
             "Content-Length": str(len(data)),
             "Content-Range": f"bytes {start}-{end}/{total}",
         },
@@ -247,6 +271,16 @@ def _put_chunk(upload_url: str, data: bytes, start: int, end: int, total: int) -
     )
     with urllib.request.urlopen(req, timeout=120, context=SSL_CONTEXT) as resp:
         resp.read()
+
+
+def _write_secret_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, content.encode("utf-8"))
+    finally:
+        os.close(fd)
+    os.chmod(path, 0o600)
 
 
 def _load_client_credentials(client_file: Path = TIKTOK_CLIENT_FILE) -> tuple[str, str]:
@@ -273,9 +307,7 @@ def _save_token_payload(token_file: Path, resp: dict[str, Any]) -> dict[str, Any
         "open_id": resp.get("open_id", ""),
         "scope": resp.get("scope", ""),
     }
-    token_file.parent.mkdir(parents=True, exist_ok=True)
-    token_file.write_text(json.dumps(saved, indent=2), encoding="utf-8")
-    os.chmod(token_file, 0o600)
+    _write_secret_file(token_file, json.dumps(saved, indent=2))
     return saved
 
 
@@ -360,11 +392,23 @@ def fetch_tiktok_snapshot(
     u = (user_payload.get("data") or {}).get("user") or {}
 
     username = (u.get("username") or "").strip()
-    handle = f"@{username}" if username and not username.startswith("@") else (username or "@tiktok")
-    display_name = u.get("display_name") or handle
+    display_name = (u.get("display_name") or "").strip()
+    if username:
+        handle = f"@{username}" if not username.startswith("@") else username
+        channel_url = f"https://www.tiktok.com/{handle}"
+    else:
+        handle = display_name
+        channel_url = ""
 
-    videos_payload = _http_json(VIDEO_LIST_URL, token=token, body={"max_count": 20})
-    raw_videos = ((videos_payload.get("data") or {}).get("videos")) or []
+    raw_videos: list[dict[str, Any]] = []
+    req_body: dict[str, Any] = {"max_count": 20}
+    while True:
+        videos_payload = _http_json(VIDEO_LIST_URL, token=token, body=req_body)
+        vdata = videos_payload.get("data") or {}
+        raw_videos.extend(vdata.get("videos") or [])
+        if not vdata.get("has_more") or vdata.get("cursor") is None:
+            break
+        req_body = {"max_count": 20, "cursor": vdata["cursor"]}
 
     items: list[dict[str, Any]] = []
     for rv in raw_videos:
@@ -375,6 +419,7 @@ def fetch_tiktok_snapshot(
             if create_ts
             else ""
         )
+        fallback_video_url = f"https://www.tiktok.com/{handle}/video/{vid_id}" if (username and vid_id) else ""
         items.append(
             {
                 "videoId": vid_id,
@@ -386,7 +431,7 @@ def fetch_tiktok_snapshot(
                 "likes": int(rv.get("like_count") or 0),
                 "comments": int(rv.get("comment_count") or 0),
                 "shares": int(rv.get("share_count") or 0),
-                "url": rv.get("share_url") or (f"https://www.tiktok.com/{handle}/video/{vid_id}" if vid_id else ""),
+                "url": rv.get("share_url") or fallback_video_url,
                 "thumbnail": rv.get("cover_image_url") or "",
                 "sourceMode": "tiktok_oauth",
             }
@@ -398,12 +443,12 @@ def fetch_tiktok_snapshot(
         "mode": "tiktok_oauth",
         "channel": {
             "handle": handle,
-            "title": display_name,
+            "title": display_name or handle,
             "followers": int(u.get("follower_count") or 0),
             "likes": int(u.get("likes_count") or 0),
             "videoCount": int(u.get("video_count") or len(items)),
             "avatarUrl": u.get("avatar_url") or "",
-            "url": f"https://www.tiktok.com/{handle}",
+            "url": channel_url,
         },
         "totals": {
             "videoCount": len(items),
@@ -430,6 +475,7 @@ def upload_tiktok_inbox_draft(
     file_size = video_path.stat().st_size
     chunk_size, total_chunks, ranges = compute_upload_chunks(file_size)
     caption = parse_tiktok_caption_from_spec(spec_path=spec_path, title=title, hashtags=hashtags)
+    content_type = VIDEO_CONTENT_TYPES.get(video_path.suffix.lower(), "video/mp4")
     token = get_valid_tiktok_token(token_file=token_file, client_file=client_file)
 
     init_body = {
@@ -451,7 +497,7 @@ def upload_tiktok_inbox_draft(
         for start, end in ranges:
             fh.seek(start)
             chunk_bytes = fh.read(end - start + 1)
-            _put_chunk(upload_url, chunk_bytes, start, end, file_size)
+            _put_chunk(upload_url, chunk_bytes, start, end, file_size, content_type=content_type)
 
     return {
         "publishId": publish_id,
@@ -481,8 +527,7 @@ def run_tiktok_setup_wizard(
         print(f"3. Enable scopes: {TIKTOK_SCOPES}")
         ck = input("Enter TikTok Client Key: ").strip()
         cs = input("Enter TikTok Client Secret: ").strip()
-        client_file.write_text(json.dumps({"client_key": ck, "client_secret": cs}, indent=2), encoding="utf-8")
-        os.chmod(client_file, 0o600)
+        _write_secret_file(client_file, json.dumps({"client_key": ck, "client_secret": cs}, indent=2))
 
     client_key, _ = _load_client_credentials(client_file)
     verifier, challenge = build_pkce_pair()
@@ -505,23 +550,36 @@ def run_tiktok_setup_wizard(
         def do_GET(self) -> None:  # noqa: N802
             parsed = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(parsed.query)
-            if "code" in qs:
-                captured["code"] = qs["code"][0]
-                captured["state"] = qs.get("state", [""])[0]
+            if parsed.path.rstrip("/") == "/callback" and ("code" in qs or "error" in qs):
+                if "error" in qs:
+                    captured["error"] = qs["error"][0]
+                    captured["error_description"] = qs.get("error_description", [""])[0]
+                if "code" in qs:
+                    captured["code"] = qs["code"][0]
+                    captured["state"] = qs.get("state", [""])[0]
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"<h3>TikTok connected! You may close this browser tab.</h3>")
+            self.wfile.write(b"<h3>TikTok callback received. You may close this browser tab.</h3>")
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             return
 
     server = http.server.HTTPServer(("127.0.0.1", 8765), _CallbackHandler)
+    server.timeout = 300
     print(f"\nOpening TikTok authorization screen in your browser...\n{auth_url}")
     webbrowser.open(auth_url)
-    server.handle_request()
-    server.server_close()
+    deadline = time.monotonic() + 300
+    try:
+        while not captured and time.monotonic() < deadline:
+            server.handle_request()
+    finally:
+        server.server_close()
 
+    if captured.get("error"):
+        raise RuntimeError(f"TikTok OAuth error: {captured.get('error_description') or captured['error']}")
+    if not captured:
+        raise RuntimeError("TikTok OAuth timed out waiting for /callback/.")
     if captured.get("state") != state or not captured.get("code"):
         raise RuntimeError("TikTok OAuth callback failed or state mismatch.")
     exchange_code_for_token(captured["code"], verifier, client_file=client_file, token_file=token_file)

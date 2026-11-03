@@ -1,4 +1,5 @@
 import hashlib
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -140,10 +141,65 @@ class TestTikTokPureLogic(unittest.TestCase):
         from mcp_server import TOOLS, _handle_tool_call
         names = {t["name"] for t in TOOLS}
         self.assertTrue({"tiktok_channel_snapshot", "tiktok_upload_draft", "cross_platform_shorts_table"}.issubset(names))
-        with patch("mcp_server.fetch_tiktok_snapshot", return_value={"channel": {"handle": "@mateai"}, "videos": [], "totals": {}}):
-            out = _handle_tool_call("tiktok_channel_snapshot", {})
+        with tempfile.TemporaryDirectory() as tmp:
+            temp_cache = Path(tmp) / "tiktok_snapshot.json"
+            with patch("mcp_server.TIKTOK_CACHE_FILE", temp_cache), \
+                 patch("mcp_server.fetch_tiktok_snapshot", return_value={"channel": {"handle": "@mateai"}, "videos": [], "totals": {}}):
+                out = _handle_tool_call("tiktok_channel_snapshot", {})
+            self.assertTrue(temp_cache.exists())
         payload = json.loads(out["content"][0]["text"])
         self.assertEqual(payload["channel"]["handle"], "@mateai")
+
+    def test_parse_caption_raises_file_not_found_for_missing_spec_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_spec = Path(tmp) / "does-not-exist.md"
+            with self.assertRaises(FileNotFoundError):
+                parse_tiktok_caption_from_spec(spec_path=missing_spec)
+
+    def test_parse_caption_cleans_explicit_hashtags_with_spaces(self):
+        caption = parse_tiktok_caption_from_spec(
+            title="Test Title",
+            hashtags=[" #AINews", "AI News", " #Shorts "],
+        )
+        self.assertEqual(caption, "Test Title\n\n#AINews")
+
+    def test_upload_inbox_draft_passes_quicktime_content_type_for_mov(self):
+        from unittest.mock import patch
+        from tiktok_studio import upload_tiktok_inbox_draft
+        with tempfile.TemporaryDirectory() as tmp:
+            vid = Path(tmp) / "clip.mov"
+            vid.write_bytes(b"m" * 512)
+            init_resp = {"data": {"publish_id": "pub_mov", "upload_url": "https://upload.tiktokapis.com/put"}}
+            with patch("tiktok_studio.get_valid_tiktok_token", return_value="tok"), \
+                 patch("tiktok_studio._http_json", return_value=init_resp), \
+                 patch("tiktok_studio._put_chunk") as mock_put:
+                upload_tiktok_inbox_draft(video_path=vid, title="Mov Clip")
+            self.assertEqual(mock_put.call_args[1].get("content_type"), "video/quicktime")
+
+    def test_fetch_tiktok_snapshot_paginates_and_handles_missing_username(self):
+        from unittest.mock import patch
+        from tiktok_studio import fetch_tiktok_snapshot
+        user_resp = {"data": {"user": {"display_name": "Creator Name", "username": "", "follower_count": 10, "likes_count": 20, "video_count": 2}}}
+        page1 = {"data": {"videos": [{"id": "111", "title": "First", "video_description": "", "create_time": 1761696000, "duration": 15, "view_count": 100, "like_count": 5, "comment_count": 1, "share_count": 2, "share_url": ""}], "has_more": True, "cursor": 1761600000}}
+        page2 = {"data": {"videos": [{"id": "222", "title": "Second", "video_description": "", "create_time": 1761600000, "duration": 20, "view_count": 50, "like_count": 3, "comment_count": 0, "share_count": 1, "share_url": "https://www.tiktok.com/@real/video/222"}], "has_more": False, "cursor": 0}}
+        with patch("tiktok_studio.get_valid_tiktok_token", return_value="tok"), \
+             patch("tiktok_studio._http_json", side_effect=[user_resp, page1, page2]) as mock_http:
+            snap = fetch_tiktok_snapshot()
+        self.assertEqual(len(snap["videos"]), 2)
+        self.assertEqual(mock_http.call_args_list[2][1]["body"], {"max_count": 20, "cursor": 1761600000})
+        self.assertEqual(snap["channel"]["handle"], "Creator Name")
+        self.assertEqual(snap["channel"]["url"], "")
+        self.assertEqual(snap["videos"][0]["url"], "")
+        self.assertEqual(snap["videos"][1]["url"], "https://www.tiktok.com/@real/video/222")
+
+    def test_cross_platform_table_escapes_pipes_and_newlines(self):
+        yt = {"videos": [{"format": "short", "title": "Line 1\nLine 2 | Part A #Shorts", "publishDate": "2026-10-29", "views": 100, "likes": 5, "comments": 1, "avgViewPct": 50.0}]}
+        tt = {"videos": [{"videoId": "999", "title": "", "videoDescription": "Multi\nLine | TikTok #AINews", "publishDate": "2026-10-30", "views": 200, "likes": 10, "comments": 2, "shares": 3}]}
+        md = build_cross_platform_table(yt, tt)
+        self.assertIn(r"Line 1 Line 2 \| Part A", md)
+        self.assertIn(r"Multi Line \| TikTok", md)
+        for row in md.splitlines()[2:]:
+            self.assertEqual(len(re.findall(r"(?<!\\)\|", row)), 11)
 
 
 if __name__ == "__main__":

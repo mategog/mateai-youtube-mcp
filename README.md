@@ -1,6 +1,6 @@
 # <img src="assets/logo.png" width="44" align="absmiddle" alt="MateAI YouTube Studio Icon"/> mateai-youtube-mcp
 
-[![Release](https://img.shields.io/github/v/release/mategog/mateai-youtube-mcp?color=238636)](https://github.com/mategog/mateai-youtube-mcp/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/mategog/mateai-youtube-mcp?color=238636)](https://github.com/mategog/mateai-youtube-mcp/releases/latest)
 [![mategog/mateai-youtube-mcp MCP server](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp)
 [![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epuplanner)
@@ -8,13 +8,21 @@
 
 ![MateAI YouTube Studio & Shorts Experiment Dashboard](assets/dashboard-preview.png)
 
-A local, self-hosted **YouTube Studio & Analytics MCP Connector + Creator Strategy Plugin** for **Google Antigravity** and **Claude Code / Claude Desktop**, built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
+**Tell your AI to upload, title, schedule and analyze your YouTube videos. Use the Claude or Antigravity subscription you already pay for, with no extra tool and no monthly fee.**
 
-Most open-source YouTube MCP servers only scrape subtitles with `yt-dlp`. Tools that connect to your actual **YouTube Studio Analytics** (retention, Shorts swipe-away rates, subscribers gained) or **upload drafts** usually charge $19–$49/month as hosted SaaS wrappers around Google's free APIs.
+> "Upload `exports/short.mp4` with this cover, write the title, description and hashtags, and schedule it for tomorrow 20:00 CET."
+>
+> "Which of my Shorts lost viewers in the first two seconds?"
 
-This connector runs **100% locally on your machine for $0/month**:
-- **Public Mode (opt-in, stdlib only):** Reads public channel pages, with no API keys. Off by default; turn it on with `--public`, `force_public=true`, or `MATEAI_YT_PUBLIC_SCRAPE=1`. Pulls live channel stats, Long-form videos, Shorts, view counts, and likes for any `@handle` and renders a local `report.html` dashboard.
-- **Studio OAuth2 Mode (free Google Cloud API):** Pulls private **YouTube Analytics API v2** metrics (*Average % viewed*, *Viewed vs. swiped away*, *Engaged views*, *Watch time*, *Subscribers gained*) and uploads rendered videos + thumbnails as **Private Drafts** in YouTube Studio.
+That is what this plugin does. It connects **Claude Code / Claude Desktop** or **Google Antigravity** to your own YouTube channel through Google's official, free YouTube APIs, so the assistant you already use can do the work you'd otherwise do by hand in YouTube Studio:
+
+- **Upload and schedule:** video, custom cover, title, description, hashtags, tags, language, synthetic-media disclosure and a future publish time.
+- **Edit and engage:** update metadata on existing videos and post comments.
+- **Analyze:** retention, Viewed vs. swiped away, engaged views, watch time and subscribers gained, per video, with a local `report.html` dashboard.
+
+Hosted "creator OS" tools charge $19-$49 a month to wrap those same free Google APIs. Here nothing sits between your AI and YouTube: it runs **100% on your machine**, your login stays in a local file only you can read, and the plugin costs **$0**. Connecting takes one command, **`/yt-setup`** (see [Easy Setup](#easy-setup-yt-setup-claude-code)).
+
+Public stats (no login) are available as an opt-in mode: `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`. Built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
 
 ---
 

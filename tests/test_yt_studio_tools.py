@@ -1,5 +1,6 @@
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from yt_studio import (
@@ -171,12 +172,23 @@ class TestMcpRegistration(unittest.TestCase):
 class TestConfirmGate(unittest.TestCase):
     VID = "v" * 11
 
-    def _call(self, name, args, env=None):
-        import os
+    def setUp(self):
+        import tempfile
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.safety = Path(tmp.name) / "safety.json"
+        patcher = patch("mcp_server.SAFETY_FILE", self.safety)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _call(self, name, args):
         from mcp_server import _handle_tool_call
 
-        with patch.dict(os.environ, {"MATEAI_YT_CONFIRM": env or ""}):
-            return _handle_tool_call(name, args)
+        return _handle_tool_call(name, args)
+
+    def _save(self, names):
+        self.safety.write_text(json.dumps({"confirm": names}))
 
     def test_delete_is_always_gated_until_user_confirmed(self):
         with patch("mcp_server.delete_video") as m:
@@ -194,10 +206,11 @@ class TestConfirmGate(unittest.TestCase):
         m.assert_called_once_with(video_id=self.VID, confirm_title="T")
         self.assertNotIn("isError", out)
 
-    def test_env_adds_extra_gated_tools_but_not_others(self):
+    def test_saved_settings_gate_extra_tools_but_not_others(self):
+        self._save(["yt_reply_comment"])
         with patch("mcp_server.reply_to_comment") as reply, patch("mcp_server.list_channel_videos", return_value={"videos": []}) as lst:
-            gated = self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"}, env="yt_reply_comment")
-            self._call("yt_list_videos", {}, env="yt_reply_comment")
+            gated = self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"})
+            self._call("yt_list_videos", {})
         reply.assert_not_called()
         self.assertTrue(gated["isError"])
         lst.assert_called_once()
@@ -207,25 +220,20 @@ class TestConfirmGate(unittest.TestCase):
             self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"})
         reply.assert_called_once()
 
-    def test_unknown_env_name_warns_and_does_not_crash(self):
-        import io
-        import os
-        from contextlib import redirect_stderr
-        from mcp_server import confirm_tools
+    def test_unknown_or_corrupt_saved_settings_never_crash_or_drop_delete(self):
+        from mcp_server import ALWAYS_CONFIRM, confirm_tools
 
-        buf = io.StringIO()
-        with patch.dict(os.environ, {"MATEAI_YT_CONFIRM": "yt_reply_coment, yt_post_comment"}), redirect_stderr(buf):
-            tools = confirm_tools()
-        self.assertEqual(tools, {"yt_delete_video", "yt_post_comment"})
-        self.assertIn("yt_reply_coment", buf.getvalue())
+        self._save(["yt_reply_coment", "yt_post_comment", 5, ["x"]])
+        self.assertEqual(confirm_tools(), ALWAYS_CONFIRM | {"yt_post_comment"})
+        self.safety.write_text("{not json")
+        self.assertEqual(confirm_tools(), ALWAYS_CONFIRM)
 
     def test_listing_marks_gated_tools_and_leaves_tools_constant_untouched(self):
-        import os
         from mcp_server import TOOLS, listed_tools
 
-        with patch.dict(os.environ, {"MATEAI_YT_CONFIRM": "yt_post_comment"}):
-            listed = {t["name"]: t for t in listed_tools()}
-        for n in ("yt_delete_video", "yt_post_comment"):
+        self._save(["yt_post_comment"])
+        listed = {t["name"]: t for t in listed_tools()}
+        for n in ("yt_delete_video", "yt_post_comment", "yt_set_safety_settings"):
             self.assertTrue(listed[n]["description"].startswith("DANGEROUS"))
             self.assertIn("user_confirmed", listed[n]["inputSchema"]["properties"])
         self.assertFalse(listed["yt_list_videos"]["description"].startswith("DANGEROUS"))
@@ -233,6 +241,38 @@ class TestConfirmGate(unittest.TestCase):
         by_name = {t["name"]: t for t in TOOLS}
         self.assertFalse(by_name["yt_delete_video"]["description"].startswith("DANGEROUS"))
         self.assertNotIn("user_confirmed", by_name["yt_delete_video"]["inputSchema"]["properties"])
+
+    def test_every_confirmable_action_is_a_real_tool(self):
+        from mcp_server import CONFIRMABLE, TOOLS
+
+        self.assertLessEqual(set(CONFIRMABLE), {t["name"] for t in TOOLS})
+
+    def test_get_lists_plain_labels_and_current_state(self):
+        self._save(["yt_post_comment"])
+        out = json.loads(self._call("yt_get_safety_settings", {})["content"][0]["text"])
+        by_tool = {a["tool"]: a for a in out["actions"]}
+        self.assertEqual(by_tool["yt_delete_video"]["alwaysAsks"], True)
+        self.assertEqual(by_tool["yt_post_comment"]["asksFirst"], True)
+        self.assertEqual(by_tool["yt_reply_comment"]["asksFirst"], False)
+        self.assertEqual(by_tool["yt_reply_comment"]["label"], "Reply to a comment")
+
+    def test_set_is_gated_and_writes_nothing_until_confirmed(self):
+        out = self._call("yt_set_safety_settings", {"confirm": ["yt_reply_comment"]})
+        self.assertTrue(out["isError"])
+        self.assertFalse(self.safety.exists())
+
+    def test_set_saves_when_confirmed_and_can_clear(self):
+        self._call("yt_set_safety_settings", {"confirm": ["yt_reply_comment", "yt_post_comment"], "user_confirmed": True})
+        self.assertEqual(json.loads(self.safety.read_text())["confirm"], ["yt_post_comment", "yt_reply_comment"])
+        out = json.loads(self._call("yt_set_safety_settings", {"confirm": [], "user_confirmed": True})["content"][0]["text"])
+        self.assertEqual([a["tool"] for a in out["actions"] if a["asksFirst"]], ["yt_delete_video"])
+
+    def test_set_rejects_unknown_names_and_keeps_delete_always_on(self):
+        with self.assertRaises(ValueError):
+            self._call("yt_set_safety_settings", {"confirm": ["yt_nope"], "user_confirmed": True})
+        self.assertFalse(self.safety.exists())
+        self._call("yt_set_safety_settings", {"confirm": ["yt_delete_video"], "user_confirmed": True})
+        self.assertEqual(json.loads(self.safety.read_text())["confirm"], [])
 
 
 if __name__ == "__main__":

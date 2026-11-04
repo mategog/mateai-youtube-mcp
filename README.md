@@ -108,7 +108,13 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_reply_comment` | Reply publicly to a top-level comment. |
 | `yt_delete_video` | Permanently delete a video; refuses unless you pass its exact title. |
 
-**Dangerous tools.** `yt_delete_video` is always marked `DANGEROUS`: its first call is refused with "CONFIRMATION REQUIRED" until the agent has asked you and repeats the call with `user_confirmed=true`. To gate more tools the same way, set `MATEAI_YT_CONFIRM` to a comma-separated list, e.g. `MATEAI_YT_CONFIRM=yt_reply_comment,yt_post_comment,yt_update_video`. This is a speed bump, not a lock: the server can't verify the agent actually asked you.
+| `yt_get_safety_settings` / `yt_set_safety_settings` | Show / choose which actions ask you first. Used by `/yt-safety`. |
+
+### Stay in control: `/yt-safety`
+
+Claude will always ask you before **deleting a video**. To make it ask before other things too, type `/yt-safety` in Claude and tick what you want to be asked about: uploading videos, changing a video's details, or posting and replying to comments. No files or settings to edit, and you can run it again any time to change your mind.
+
+When an action asks first, Claude tells you exactly what it's about to do and waits for your yes. This is a safety net, not a lock: it relies on Claude asking you, and the plugin can't check that it did.
 
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
 

@@ -107,6 +107,18 @@ On Windows or Linux (untested), `/yt-setup` auto-opening the Google pages is mac
 | `yt_upload_draft` | Upload a local MP4/MOV + cover image + full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment`, and **`publish_at` schedule**). |
 | `yt_update_video` | Update title, description, tags, privacy status, schedule time, thumbnail, or the `contains_synthetic_media` disclosure of an existing video; parts you don't change are not re-sent. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
+| `yt_list_videos` | List/search your uploads (private and unlisted included) to find video IDs. |
+| `yt_list_comments` | Read top-level comment threads (with replies) on a video. |
+| `yt_reply_comment` | Reply publicly to a top-level comment. |
+| `yt_delete_video` | Permanently delete a video; refuses unless you pass its exact title. |
+
+| `yt_get_safety_settings` / `yt_set_safety_settings` | Show / choose which actions ask you first. Used by `/yt-safety`. |
+
+### Stay in control: `/yt-safety`
+
+Claude will always ask you before **deleting a video**. To make it ask before other things too, type `/yt-safety` in Claude and tick what you want to be asked about: uploading videos, changing a video's details, or posting and replying to comments. No files or settings to edit, and you can run it again any time to change your mind.
+
+When an action asks first, Claude tells you exactly what it's about to do and waits for your yes. This is a safety net, not a lock: it relies on Claude asking you, and the plugin can't check that it did.
 
 **Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
 

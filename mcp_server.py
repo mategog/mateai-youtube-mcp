@@ -7,6 +7,7 @@ Licensed under Apache 2.0 with Commons Clause Restriction v1.0.
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -24,16 +25,35 @@ from yt_studio import (
     AUTHOR_ATTRIBUTION,
     DEFAULT_HANDLE,
     REPORT_FILE,
+    STATE_DIR,
     build_shorts_experiment_markdown,
+    delete_video,
     fetch_video_public_details,
     fetch_video_retention_diagnosis,
     get_best_snapshot,
+    list_channel_videos,
+    list_video_comments,
     PUBLIC_SCRAPE_ENV,
     post_video_comment,
     render_html_report,
+    reply_to_comment,
     update_video_metadata,
     upload_private_draft,
 )
+
+ALWAYS_CONFIRM = {"yt_delete_video", "yt_set_safety_settings"}
+SAFETY_FILE = STATE_DIR / "safety.json"
+
+# Actions a creator can choose to be asked about first, in plain words.
+CONFIRMABLE = {
+    "yt_delete_video": "Delete a video",
+    "yt_upload_draft": "Upload a video to YouTube",
+    "yt_update_video": "Change a video's title, description, visibility or schedule",
+    "yt_post_comment": "Post a comment",
+    "yt_reply_comment": "Reply to a comment",
+    "tiktok_upload_draft": "Send a video to your TikTok drafts",
+}
+
 
 SERVER_INFO = {
     "name": "mateai-youtube-mcp",
@@ -45,7 +65,10 @@ SERVER_INSTRUCTIONS = (
     "Self-hosted YouTube Studio & Analytics MCP server. "
     "Use yt_channel_snapshot and yt_shorts_experiment_table to inspect channel performance and render report.html. "
     "Use yt_video_details to diagnose 100-point audience retention curves, drop-off cliffs, and traffic sources for a 11-char video_id. "
-    "Use yt_upload_draft, yt_update_video, and yt_post_comment to upload/schedule videos, update metadata/thumbnails, and post comments in YouTube Studio."
+    "Use yt_upload_draft, yt_update_video, and yt_post_comment to upload/schedule videos, update metadata/thumbnails, and post comments in YouTube Studio. "
+    "Use yt_list_videos to find video IDs, yt_list_comments and yt_reply_comment to read and answer comments, "
+    "and yt_delete_video (irreversible, needs the exact title) to remove a video; prefer yt_update_video with privacy_status to hide one. "
+    "Dangerous actions ask the user first; yt_get_safety_settings / yt_set_safety_settings (the /yt-safety command) change which ones."
 )
 
 TOOLS = [
@@ -366,6 +389,143 @@ TOOLS = [
         },
     },
     {
+        "name": "yt_list_videos",
+        "description": (
+            "List the authenticated channel's uploads (including private, unlisted and scheduled), newest first, with "
+            "videoId, title, privacyStatus, publishAt, views and URL. Optional `query` is a case-insensitive substring "
+            "match on title or description, applied locally. Costs ~2 quota units per 50 videos paged. Requires OAuth2."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Optional text to match in title or description."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 25, "description": "Max videos to return."},
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "List or Search Own YouTube Videos",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_list_comments",
+        "description": (
+            "Read top-level comment threads on a video (commentThreads.list, ~1 quota unit): commentId, author, text, likes, "
+            "publishedAt, replyCount and the first few replies. Single page, max 100. Use a returned commentId as "
+            "yt_reply_comment's parent_id. Fails if comments are disabled."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$", "description": "11-character YouTube video ID."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "order": {"type": "string", "enum": ["time", "relevance"], "default": "time"},
+            },
+            "required": ["video_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Read YouTube Video Comments",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_reply_comment",
+        "description": (
+            "Publish a public reply to a top-level comment (comments.insert, ~50 quota units) under the authenticated "
+            "channel identity. parent_id must be a top-level commentId from yt_list_comments. Non-idempotent."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "parent_id": {"type": "string", "minLength": 1, "description": "commentId of the top-level comment to reply to."},
+                "text": {"type": "string", "minLength": 1, "maxLength": 10000, "description": "Plain-text reply body."},
+            },
+            "required": ["parent_id", "text"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Reply to a YouTube Comment",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_delete_video",
+        "description": (
+            "PERMANENTLY delete one of the channel's videos (videos.delete, ~50 quota units). Irreversible: views, "
+            "watch hours and comments are lost. To merely hide a video use yt_update_video with privacy_status. "
+            "Refuses unless confirm_title exactly equals the video's current title."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$", "description": "11-character YouTube video ID."},
+                "confirm_title": {"type": "string", "minLength": 1, "description": "Exact current title of the video, as a deliberate confirmation."},
+            },
+            "required": ["video_id", "confirm_title"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Permanently Delete a YouTube Video",
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_get_safety_settings",
+        "description": (
+            "Show which actions ask the user for a yes before they run, in plain words. "
+            "Deleting a video and changing these settings always ask; the rest are the user's choice."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "annotations": {
+            "title": "Show Which Actions Ask First",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
+        "name": "yt_set_safety_settings",
+        "description": (
+            "Choose which actions ask the user for a yes before they run. `confirm` is the full list of optional "
+            "actions that should ask (an empty list means only the always-on ones ask). Deleting a video always asks "
+            "and cannot be turned off. Use only with the user's explicit choice, normally via the /yt-safety command."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": sorted(set(CONFIRMABLE) - ALWAYS_CONFIRM)},
+                    "description": "Tool names that must ask first, e.g. ['yt_reply_comment', 'yt_post_comment'].",
+                },
+            },
+            "required": ["confirm"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Choose Which Actions Ask First",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    },
+    {
         "name": "tiktok_channel_snapshot",
         "description": (
             "Fetch authenticated TikTok profile statistics (followers, total likes, video count) and recent videos "
@@ -462,7 +622,72 @@ TOOLS = [
 ]
 
 
+def _saved_confirm() -> set[str]:
+    try:
+        names = json.loads(SAFETY_FILE.read_text(encoding="utf-8")).get("confirm", [])
+        return {n for n in names if isinstance(n, str) and n in CONFIRMABLE}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return set()
+
+
+def confirm_tools() -> set[str]:
+    """Tools that bounce until the user has explicitly said yes in chat: the always-on ones
+    (deleting a video, changing these settings) plus whatever the user chose via yt_set_safety_settings."""
+    return ALWAYS_CONFIRM | _saved_confirm()
+
+
+def get_safety_settings() -> dict[str, Any]:
+    gated = confirm_tools()
+    return {
+        "actions": [
+            {"tool": t, "label": label, "asksFirst": t in gated, "alwaysAsks": t in ALWAYS_CONFIRM}
+            for t, label in CONFIRMABLE.items()
+        ]
+    }
+
+
+def set_safety_settings(confirm: list[str]) -> dict[str, Any]:
+    unknown = sorted(set(confirm) - set(CONFIRMABLE))
+    if unknown:
+        raise ValueError(f"Unknown action(s): {unknown}. Choose from: {sorted(CONFIRMABLE)}")
+    SAFETY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SAFETY_FILE.write_text(json.dumps({"confirm": sorted(set(confirm) - ALWAYS_CONFIRM)}, indent=2), encoding="utf-8")
+    return get_safety_settings()
+
+
+def listed_tools() -> list[dict[str, Any]]:
+    """TOOLS as advertised to the client: gated tools get a DANGEROUS marker and a user_confirmed flag."""
+    gated = confirm_tools()
+    out = copy.deepcopy(TOOLS)
+    for tool in out:
+        if tool["name"] in gated:
+            tool["description"] = (
+                "DANGEROUS — ask the user for an explicit yes in chat before calling; the first call is refused "
+                "until user_confirmed=true. " + tool["description"]
+            )
+            tool["inputSchema"]["properties"]["user_confirmed"] = {
+                "type": "boolean",
+                "description": "Set true ONLY after the user explicitly approved this exact action in chat. Never set it on your own.",
+            }
+    return out
+
+
 def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name in confirm_tools() and not args.get("user_confirmed"):
+        shown = {k: v for k, v in args.items() if k != "user_confirmed"}
+        return {
+            "isError": True,
+            "content": [{
+                "type": "text",
+                "text": (
+                    f"CONFIRMATION REQUIRED — nothing was done. {name} is marked dangerous. "
+                    f"Tell the user exactly what this call will do (tool {name}, arguments {json.dumps(shown)}) "
+                    "and ask for an explicit yes. Only after they say yes, repeat the same call with user_confirmed=true. "
+                    "Never set user_confirmed on your own."
+                ),
+            }],
+        }
+
     if name == "tiktok_channel_snapshot":
         snap = fetch_tiktok_snapshot()
         TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
@@ -555,6 +780,33 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
         )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
+    if name == "yt_list_videos":
+        res = list_channel_videos(query=args.get("query"), limit=int(args.get("limit", 25)))
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_list_comments":
+        res = list_video_comments(
+            video_id=args["video_id"],
+            limit=int(args.get("limit", 20)),
+            order=args.get("order", "time"),
+        )
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_reply_comment":
+        res = reply_to_comment(parent_id=args["parent_id"], text=args["text"])
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_delete_video":
+        res = delete_video(video_id=args["video_id"], confirm_title=args["confirm_title"])
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_get_safety_settings":
+        return {"content": [{"type": "text", "text": json.dumps(get_safety_settings(), indent=2)}]}
+
+    if name == "yt_set_safety_settings":
+        res = set_safety_settings(list(args.get("confirm", [])))
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -595,7 +847,7 @@ def main() -> None:
             resp = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
-                "result": {"tools": TOOLS},
+                "result": {"tools": listed_tools()},
             }
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()

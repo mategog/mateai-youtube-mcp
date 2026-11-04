@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yt_auth
 import yt_studio
 
 # What a real videos.list(part="snippet,status") returns: no containsSyntheticMedia.
@@ -57,7 +58,7 @@ class TestUpdatePreservesSyntheticFlag(unittest.TestCase):
         mods["googleapiclient.discovery"].build = lambda *a, **k: self.fake
         mods["googleapiclient.http"].MediaFileUpload = lambda path: path
         patches = [mock.patch.dict(sys.modules, mods),
-                   mock.patch.object(yt_studio, "get_oauth_credentials", return_value=object())]
+                   mock.patch.object(yt_auth, "get_oauth_credentials", return_value=object())]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
@@ -100,7 +101,7 @@ class TestUpdatePreservesSyntheticFlag(unittest.TestCase):
         self.assertIs(self.fake.updates[0]["body"]["status"]["containsSyntheticMedia"], False)
 
     def test_dry_run_reports_flag(self):
-        with mock.patch.object(yt_studio, "get_oauth_credentials", side_effect=AssertionError("touched OAuth")):
+        with mock.patch.object(yt_auth, "get_oauth_credentials", side_effect=AssertionError("touched OAuth")):
             res = self._update(contains_synthetic_media=True, dry_run=True)
         self.assertIs(res["wouldChange"]["containsSyntheticMedia"], True)
         self.assertEqual(self.fake.updates, [])

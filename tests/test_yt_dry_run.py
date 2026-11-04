@@ -4,13 +4,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
+import yt_auth
 import yt_studio
 
 
 def _no_network():
     """A dry run must not sign in or touch Google at all."""
     return mock.patch.object(
-        yt_studio, "get_oauth_credentials", side_effect=AssertionError("dry run touched OAuth")
+        yt_auth, "get_oauth_credentials", side_effect=AssertionError("dry run touched OAuth")
     )
 
 

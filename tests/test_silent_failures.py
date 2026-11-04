@@ -6,7 +6,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yt_auth
+import yt_common
 import yt_studio
+import yt_videos
 
 
 class FakeHttpError(Exception):
@@ -60,7 +63,7 @@ class FakeClient:
 class SilentFailureTests(unittest.TestCase):
     def use(self, client):
         for p in (mock.patch.dict(sys.modules, _modules(client)),
-                  mock.patch.object(yt_studio, "get_oauth_credentials", return_value=object())):
+                  mock.patch.object(yt_auth, "get_oauth_credentials", return_value=object())):
             p.start()
             self.addCleanup(p.stop)
 
@@ -113,7 +116,7 @@ class SilentFailureTests(unittest.TestCase):
             video, thumb = Path(tmp) / "v.mp4", Path(tmp) / "t.png"
             video.write_bytes(b"x")
             thumb.write_bytes(b"x")
-            with mock.patch.object(yt_studio, "post_video_comment", side_effect=FakeHttpError(403)):
+            with mock.patch.object(yt_videos, "post_video_comment", side_effect=FakeHttpError(403)):
                 res = yt_studio.upload_private_draft(video, title="T", thumbnail_path=thumb,
                                                      pinned_comment="hi", auto_post_comment=True)
         self.assertFalse(res["thumbnailUploaded"])
@@ -122,7 +125,7 @@ class SilentFailureTests(unittest.TestCase):
         self.assertEqual(res["commentError"], "HTTP 403")
 
     def test_unknown_subscriber_count_is_none_not_invented(self):
-        with mock.patch.object(yt_studio, "_http_get", return_value="<html></html>"):
+        with mock.patch.object(yt_common, "_http_get", return_value="<html></html>"):
             snap = yt_studio.fetch_public_channel_snapshot("@x")
         self.assertIsNone(snap["channel"]["subscribersText"])
 
@@ -130,7 +133,7 @@ class SilentFailureTests(unittest.TestCase):
         snap = {"videos": [{"format": "short", "videoId": "aaaaaaaaaaa", "title": "Gemini Carbon", "url": "u"},
                            {"format": "short", "videoId": "bbbbbbbbbbb", "title": "Other", "url": "u"}]}
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(yt_studio, "STATE_DIR", Path(tmp)):
+            with mock.patch.object(yt_common, "STATE_DIR", Path(tmp)):
                 rows = yt_studio.build_shorts_experiment_markdown(snap).splitlines()[2:]
                 self.assertTrue(all("| — |" in r for r in rows))
                 (Path(tmp) / "shorts_styles.json").write_text(json.dumps({"aaaaaaaaaaa": "C (Poster)"}))

@@ -35,10 +35,8 @@ class FakeYouTube:
 
             def update(self, part, body):
                 yt.updates.append({"part": part, "body": body})
-                return mock.Mock(execute=lambda: {
-                    "snippet": body.get("snippet", {"title": "Old"}),
-                    "status": body.get("status", {}),
-                })
+                # Like the real API: the response carries only the parts that were sent.
+                return mock.Mock(execute=lambda: {k: body[k] for k in ("snippet", "status") if k in body})
         return Videos()
 
     def thumbnails(self):
@@ -79,6 +77,16 @@ class TestUpdatePreservesSyntheticFlag(unittest.TestCase):
         self.assertEqual(self.fake.updates[0]["part"], "snippet")
         self.assertNotIn("status", self.fake.updates[0]["body"])
         self.assertEqual(self.fake.updates[0]["body"]["snippet"]["title"], "New")
+
+    def test_title_only_result_reports_title_and_unchanged_privacy(self):
+        res = self._update(title="New")
+        self.assertEqual(res["title"], "New")
+        self.assertEqual(res["privacyStatus"], "private")
+
+    def test_privacy_only_result_keeps_existing_title(self):
+        res = self._update(privacy_status="unlisted")
+        self.assertEqual(res["title"], "Old")
+        self.assertEqual(res["privacyStatus"], "unlisted")
 
     def test_privacy_change_still_sends_status(self):
         self._update(privacy_status="unlisted")

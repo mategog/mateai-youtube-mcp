@@ -314,11 +314,14 @@ def update_video_metadata(
         ).execute()
         thumb_updated = True
 
+    # videos.update echoes back only the parts that were sent; fall back to what videos.list returned.
+    result_snippet = updated.get("snippet", snippet)
+    result_status = updated.get("status", status)
     return {
         "videoId": video_id,
-        "title": updated["snippet"]["title"],
-        "privacyStatus": updated["status"].get("privacyStatus"),
-        "publishAt": updated["status"].get("publishAt"),
+        "title": result_snippet["title"],
+        "privacyStatus": result_status.get("privacyStatus"),
+        "publishAt": result_status.get("publishAt"),
         "thumbnailUpdated": thumb_updated,
         "studioEditUrl": f"https://studio.youtube.com/video/{video_id}/edit",
     }

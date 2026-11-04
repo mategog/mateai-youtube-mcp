@@ -34,6 +34,7 @@ from yt_studio import (
 TIKTOK_TOKEN_FILE = STATE_DIR / ".tokens" / "tiktok_token.json"
 TIKTOK_CLIENT_FILE = STATE_DIR / "tiktok_auth_secret" / "tiktok_client.json"
 TIKTOK_CACHE_FILE = STATE_DIR / "tiktok_snapshot.json"
+TIKTOK_HISTORY_FILE = STATE_DIR / "tiktok_history.jsonl"
 REDIRECT_URI = "http://127.0.0.1:8765/callback/"
 TIKTOK_SCOPES = "user.info.basic,user.info.profile,user.info.stats,video.list,video.upload"
 
@@ -462,6 +463,42 @@ def fetch_tiktok_snapshot(
         "videos": items,
         "attribution": AUTHOR_ATTRIBUTION,
     }
+
+
+def append_tiktok_history(snapshot: dict[str, Any], history_file: Path = TIKTOK_HISTORY_FILE) -> bool:
+    """Append one dated counts row to the local history file; never raises.
+
+    The Display API keeps no history, so growth is only measurable if each snapshot is recorded.
+    Returns False when the row could not be written, so a full disk never breaks a snapshot.
+    """
+    try:
+        channel = snapshot.get("channel") or {}
+        row = {
+            "capturedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "followers": channel.get("followers"),
+            "likes": channel.get("likes"),
+            "videoCount": channel.get("videoCount"),
+            "videos": [
+                {
+                    "id": v.get("videoId"),
+                    "views": v.get("views"),
+                    "likes": v.get("likes"),
+                    "comments": v.get("comments"),
+                    "shares": v.get("shares"),
+                }
+                for v in snapshot.get("videos") or []
+            ],
+        }
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(history_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+        os.chmod(history_file, 0o600)
+        return True
+    except OSError:
+        return False
 
 
 def upload_tiktok_inbox_draft(

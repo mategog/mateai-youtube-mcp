@@ -7,7 +7,9 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epuplanner)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 
-![MateAI YouTube Studio & Shorts Experiment Dashboard](assets/dashboard-preview.png)
+![Dry run, then schedule: an animated replay of real plugin output](assets/demo.gif)
+
+<sub>Animated replay of real v0.5.0 output (re-created, not a live screen recording): a dry run, a wrong date caught by a warning, then a real scheduled upload.</sub>
 
 **Tell your AI to upload, title, schedule and analyze your YouTube videos. Use the Claude or Antigravity subscription you already pay for, with no extra tool and no monthly fee.**
 
@@ -79,6 +81,8 @@ MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
 
 Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
 
+On Windows or Linux (untested), `/yt-setup` auto-opening the Google pages is macOS-only; use the [manual wizard](#unlock-private-youtube-studio-analytics--draft-uploads-0mo) (`python3 yt_studio.py setup`).
+
 ### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
 {
@@ -101,7 +105,7 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_shorts_experiment_table` | Generate a Markdown table comparing Shorts retention, swipe-away rate, and views. |
 | `yt_video_details` | Inspect metadata and metrics for any 11-character YouTube `video_id`. |
 | `yt_upload_draft` | Upload a local MP4/MOV + cover image + full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment`, and **`publish_at` schedule**). |
-| `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
+| `yt_update_video` | Update title, description, tags, privacy status, schedule time, thumbnail, or the `contains_synthetic_media` disclosure of an existing video; parts you don't change are not re-sent. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
 | `yt_list_videos` | List/search your uploads (private and unlisted included) to find video IDs. |
 | `yt_list_comments` | Read top-level comment threads (with replies) on a video. |
@@ -115,6 +119,8 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 Claude will always ask you before **deleting a video**. To make it ask before other things too, type `/yt-safety` in Claude and tick what you want to be asked about: uploading videos, changing a video's details, or posting and replying to comments. No files or settings to edit, and you can run it again any time to change your mind.
 
 When an action asks first, Claude tells you exactly what it's about to do and waits for your yes. This is a safety net, not a lock: it relies on Claude asking you, and the plugin can't check that it did.
+
+**Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
 
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
 
@@ -171,7 +177,7 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 | **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
 | **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
 | **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
-| Asked to log in again after about a week | Apps in "Testing" mode can have sign-ins that expire after about 7 days. Publishing the app on the Audience page may avoid that. **[unconfirmed]** |
+| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
 | Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
 
 Not using Claude Code, or on an older version? Use the wizard below.
@@ -180,7 +186,7 @@ Not using Claude Code, or on an older version? Use the wizard below.
 
 ## Unlock Private YouTube Studio Analytics & Draft Uploads ($0/mo)
 
-Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required** and you keep 100% of your own private quota.
+Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required while the app stays in "Testing"** (the cost: Google expires the sign-in every 7 days, see the troubleshooting table above) and you keep 100% of your own private quota.
 
 Run the **1-Command Guided Setup Wizard**:
 
@@ -233,7 +239,7 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 - **Switch on the AI-generated label yourself.** If your video uses a synthetic voice or AI visuals, turn on TikTok's AI-generated content toggle in the app before posting. The API cannot set it.
 - **Matching is by title.** The comparison table pairs a Short with a TikTok when the title (hashtags ignored) matches the TikTok title or description. Anything else shows up as its own row, with "—" for the missing platform.
 - **Only official numbers.** TikTok's API gives views, likes, comments and shares. Retention-style metrics exist for YouTube only.
-- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`. Details in [PRIVACY.md](PRIVACY.md).
+- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`, and every `tiktok_channel_snapshot` call also appends a counts row to `tiktok_history.jsonl` so growth can be measured later. Details in [PRIVACY.md](PRIVACY.md).
 
 | Problem | Fix |
 | --- | --- |

@@ -23,13 +23,10 @@ const num = (n: number | null, suffix = '') => (n === null ? '–' : `${n}${suff
 
 const BAND_VIDEOS = 5
 
+// register.tsx registers this command in its session.start hook: one module can't hold two unmatched ones.
+export const dashboardCommand = { name: 'yt-dashboard', description: 'Open the YouTube channel dashboard pane' }
+
 export const register: Register = on => {
-  on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'yt-dashboard', description: 'Open the YouTube channel dashboard pane' })
-
-    return next(e)
-  })
-
   on('command.run', { command: 'yt-dashboard' }, async $ => {
     const isOn = !(await read($, bandOn))
     await update($, bandOn, () => isOn)

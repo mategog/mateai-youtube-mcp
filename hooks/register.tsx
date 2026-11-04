@@ -1,5 +1,7 @@
 import type { Hook, Register } from 'claude-code'
 
+import { dashboardCommand, register as registerDashboard } from './dashboard'
+
 type Api = Parameters<Hook<'session.start'>>[0]
 
 // yt-studio keeps its login files in its plugin data folder (override: MATEAI_YT_HOME).
@@ -16,7 +18,7 @@ const CONSOLE_PAGES = [
   'https://console.cloud.google.com/auth/audience',
 ]
 
-type Paths = { home: string; data: string; secret: string; token: string; venvPython: string }
+type Paths = { home: string; data: string; secret: string; token: string; expired: string; venvPython: string }
 
 const paths = async ($: Api): Promise<Paths> => {
   const home = (await $.env.get('HOME')) ?? ''
@@ -27,18 +29,22 @@ const paths = async ($: Api): Promise<Paths> => {
     data,
     secret: `${data}/google_auth_secret/client_secret.json`,
     token: `${data}/.tokens/token.json`,
+    expired: `${data}/.tokens/expired`,
     venvPython: `${data}/.venv/bin/python`,
   }
 }
 
-// 'ok' = logged in with every scope the plugin needs; 'scopes' = logged in, too few scopes.
-const loginState = async ($: Api, p: Paths): Promise<'ok' | 'scopes' | 'none'> => {
+// 'ok' = logged in with every scope the plugin needs; 'scopes' = logged in, too few scopes;
+// 'expired' = the Python side marked the saved login dead (Google refused to renew it).
+const loginState = async ($: Api, p: Paths): Promise<'ok' | 'scopes' | 'expired' | 'none'> => {
   if (!(await $.fs.exists(p.token))) return 'none'
   try {
     const token = JSON.parse(await $.fs.read(p.token)) as { scopes?: string[] }
     const have = token.scopes ?? []
 
-    return NEEDED_SCOPES.every(s => have.includes(s)) ? 'ok' : 'scopes'
+    if (!NEEDED_SCOPES.every(s => have.includes(s))) return 'scopes'
+
+    return (await $.fs.exists(p.expired)) ? 'expired' : 'ok'
   } catch {
     return 'none'
   }
@@ -81,7 +87,7 @@ const LOGIN_CODE = [
   'print("LOGIN_OK")',
 ].join('\n')
 
-const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes') => {
+const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' | 'expired') => {
   const env = { MATEAI_YT_HOME: p.data }
   if (!(await $.fs.exists(p.venvPython))) {
     $.ui.toast('yt-setup: installing Google libraries (about a minute)…')
@@ -100,7 +106,7 @@ const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes')
   }
   $.ui.toast('yt-setup: your browser is opening. Sign in and click Allow.')
   const login = await $.process.run(
-    [p.venvPython, '-c', LOGIN_CODE, state === 'scopes' ? '1' : '0'],
+    [p.venvPython, '-c', LOGIN_CODE, state === 'scopes' || state === 'expired' ? '1' : '0'],
     { cwd: root, env, timeoutMs: 600000 },
   ).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
   const isOk = login.exitCode === 0 && (await loginState($, p)) === 'ok'
@@ -112,7 +118,7 @@ const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes')
   )
 }
 
-export const register: Register = on => {
+const registerSetup: Register = on => {
   let projectDir = '.'
 
   on('session.start', async ($, e, next) => {
@@ -120,6 +126,7 @@ export const register: Register = on => {
       name: 'yt-setup',
       description: 'Connect the yt-studio plugin to your YouTube account (one-time)',
     })
+    await $.command.register(dashboardCommand)
     projectDir = e.cwd
     const p = await paths($)
     if ((await loginState($, p)) !== 'ok') $.ui.status('YouTube: not connected, run /yt-setup')
@@ -175,4 +182,11 @@ export const register: Register = on => {
 
     return { text: `Found your Google client file. Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.${secret === p.secret ? '' : `\n(Copied ${secret} into the plugin folder, permissions 600.)`}` }
   })
+}
+
+// A plugin names exactly one hooks module in hooks.json, so this entry point registers both parts:
+// /yt-setup (above) and /yt-dashboard (dashboard.tsx).
+export const register: Register = (on, options) => {
+  registerSetup(on, options)
+  registerDashboard(on, options)
 }

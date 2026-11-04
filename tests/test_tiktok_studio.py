@@ -144,6 +144,7 @@ class TestTikTokPureLogic(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             temp_cache = Path(tmp) / "tiktok_snapshot.json"
             with patch("mcp_server.TIKTOK_CACHE_FILE", temp_cache), \
+                 patch("mcp_server.TIKTOK_HISTORY_FILE", Path(tmp) / "tiktok_history.jsonl"), \
                  patch("mcp_server.fetch_tiktok_snapshot", return_value={"channel": {"handle": "@mateai"}, "videos": [], "totals": {}}):
                 out = _handle_tool_call("tiktok_channel_snapshot", {})
             self.assertTrue(temp_cache.exists())
@@ -222,6 +223,67 @@ class TestTikTokPureLogic(unittest.TestCase):
             _write_secret_file(p, '{"access_token":"new"}')
             self.assertEqual(p.stat().st_mode & 0o777, 0o600)
             self.assertEqual(p.read_text(encoding="utf-8"), '{"access_token":"new"}')
+
+    def _history_snap(self, views: int) -> dict:
+        return {
+            "channel": {"followers": 450, "likes": 3200, "videoCount": 5},
+            "videos": [
+                {"videoId": "743001", "title": "x", "views": views, "likes": 310, "comments": 28, "shares": 45},
+                {"videoId": "743002", "views": 90, "likes": 4, "comments": 0, "shares": 1},
+            ],
+        }
+
+    def test_append_tiktok_history_appends_one_dated_line_per_call_without_overwriting(self):
+        import json
+        from tiktok_studio import append_tiktok_history
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "tiktok_history.jsonl"
+            self.assertTrue(append_tiktok_history(self._history_snap(4200), history_file=p))
+            self.assertTrue(append_tiktok_history(self._history_snap(5100), history_file=p))
+            rows = [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(rows), 2)
+            self.assertEqual([r["videos"][0]["views"] for r in rows], [4200, 5100])
+            self.assertRegex(rows[0]["capturedAt"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+            self.assertEqual(rows[0]["followers"], 450)
+            self.assertEqual(rows[0]["videos"][0], {"id": "743001", "views": 4200, "likes": 310, "comments": 28, "shares": 45})
+            self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+
+    def test_append_tiktok_history_tolerates_sparse_snapshot(self):
+        import json
+        from tiktok_studio import append_tiktok_history
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "nested" / "tiktok_history.jsonl"
+            self.assertTrue(append_tiktok_history({"channel": {"handle": "@mateai"}, "videos": [], "totals": {}}, history_file=p))
+            row = json.loads(p.read_text(encoding="utf-8"))
+            self.assertEqual(row["videos"], [])
+            self.assertIsNone(row["followers"])
+
+    def test_append_tiktok_history_never_raises_when_path_is_unwritable(self):
+        from tiktok_studio import append_tiktok_history
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = Path(tmp) / "not_a_dir"
+            blocker.write_text("file", encoding="utf-8")
+            self.assertFalse(append_tiktok_history(self._history_snap(1), history_file=blocker / "h.jsonl"))
+
+    def test_snapshot_tool_records_history_and_still_returns_when_recording_fails(self):
+        import json
+        from unittest.mock import patch
+        from mcp_server import _handle_tool_call
+        snap = {"channel": {"handle": "@mateai"}, "videos": [], "totals": {}}
+        with tempfile.TemporaryDirectory() as tmp:
+            hist = Path(tmp) / "tiktok_history.jsonl"
+            with patch("mcp_server.TIKTOK_CACHE_FILE", Path(tmp) / "snap.json"), \
+                 patch("mcp_server.TIKTOK_HISTORY_FILE", hist), \
+                 patch("mcp_server.fetch_tiktok_snapshot", return_value=snap):
+                _handle_tool_call("tiktok_channel_snapshot", {})
+                self.assertEqual(len(hist.read_text(encoding="utf-8").splitlines()), 1)
+            blocker = Path(tmp) / "blocker"
+            blocker.write_text("file", encoding="utf-8")
+            with patch("mcp_server.TIKTOK_CACHE_FILE", Path(tmp) / "snap2.json"), \
+                 patch("mcp_server.TIKTOK_HISTORY_FILE", blocker / "h.jsonl"), \
+                 patch("mcp_server.fetch_tiktok_snapshot", return_value=snap):
+                out = _handle_tool_call("tiktok_channel_snapshot", {})
+            self.assertEqual(json.loads(out["content"][0]["text"])["channel"]["handle"], "@mateai")
 
 
 if __name__ == "__main__":

@@ -104,6 +104,8 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
 
+**Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
+
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
 
 | Tool | Description |

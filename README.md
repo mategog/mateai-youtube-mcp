@@ -11,8 +11,6 @@
 
 <sub>Animated replay of real v0.5.0 output (re-created, not a live screen recording): a dry run, a wrong date caught by a warning, then a real scheduled upload.</sub>
 
-![MateAI YouTube Studio & Shorts Experiment Dashboard](assets/dashboard-preview.png)
-
 **Tell your AI to upload, title, schedule and analyze your YouTube videos. Use the Claude or Antigravity subscription you already pay for, with no extra tool and no monthly fee.**
 
 > "Upload `exports/short.mp4` with this cover, write the title, description and hashtags, and schedule it for tomorrow 20:00 CET."

@@ -253,6 +253,11 @@ def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any
 # Authenticated OAuth2 YouTube Data v3 + YouTube Analytics v2 Mode
 # ---------------------------------------------------------------------------
 
+def _saved_scopes(token_file: Path) -> list[str]:
+    scopes = json.loads(token_file.read_text(encoding="utf-8")).get("scopes") or []
+    return scopes.split(" ") if isinstance(scopes, str) else list(scopes)
+
+
 def get_oauth_credentials(
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
     upload_scope: bool = False,
@@ -273,11 +278,19 @@ def get_oauth_credentials(
     scopes = SCOPES_WITH_UPLOAD if upload_scope else SCOPES_READONLY
     creds = None
 
+    covers_request = True
     if not force_reauth and TOKEN_FILE.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), scopes)
+        # Load with the union of what the file says was granted and what this call needs, so
+        # saving never narrows the file's scopes (a read call used to overwrite them).
+        granted = _saved_scopes(TOKEN_FILE)
+        covers_request = set(scopes) <= set(granted)
+        creds = Credentials.from_authorized_user_file(
+            str(TOKEN_FILE), granted + [s for s in scopes if s not in granted]
+        )
 
-    if not creds or not creds.valid:
-        if not force_reauth and creds and creds.expired and creds.refresh_token:
+    # A cached access token is only reusable if the file says it covers this call's scopes.
+    if not creds or not creds.valid or not covers_request:
+        if not force_reauth and creds and (creds.expired or not covers_request) and creds.refresh_token:
             try:
                 creds.refresh(Request())
             except RefreshError as exc:

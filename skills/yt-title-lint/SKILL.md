@@ -1,10 +1,11 @@
 ---
 name: yt-title-lint
 description: >-
-  Write and lint the title and thumbnail for a YouTube video as one pairing,
-  checking truncation, duplication and vagueness before publish. Use for
-  "title ideas", "what should I call this", "thumbnail text", "my CTR is
-  bad", packaging, or any request to rename or repackage an existing video.
+  Lint a YouTube title and thumbnail text as one pairing before publish:
+  truncation, duplication, vagueness. Use only when the user wants a title or
+  thumbnail CHECKED or scored ("lint this title", "is this title too long",
+  "does the thumbnail repeat the title"). To come up with titles and
+  thumbnail concepts, use yt-packaging instead.
 ---
 
 # yt-title-lint
@@ -13,8 +14,8 @@ The title and the thumbnail are ONE unit. Writing them separately is why most pa
 thumbnail repeats the title, and half the click surface says the same thing twice.
 
 ```bash
-python3 title.py --title "..." --thumb "AI RAN IT"
-python3 title.py titles.txt            # one per line, ranked
+python3 "${CLAUDE_SKILL_DIR}/title.py" --title "..." --thumb "AI RAN IT"
+python3 "${CLAUDE_SKILL_DIR}/title.py" titles.txt            # one per line, ranked
 ```
 
 ## Before you write

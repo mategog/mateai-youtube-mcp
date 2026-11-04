@@ -39,7 +39,7 @@ def check(title, thumb=None):
     if v: issues.append(("vague", f"{', '.join(sorted(set(v)))} - swap for a number, a name or a date"))
     nums = re.findall(r"\d[\d,.]*%?", t)
     if nums: good.append(f"carries a concrete figure ({', '.join(nums[:3])})")
-    else: issues.append(("no-number", "no number, date or name - the most reliable single fix"))
+    else: issues.append(("no-number", "no digit in the title - add a number or date (a specific name also works, but only digits are detected here)"))
     if t.endswith("?"): good.append("open question in the title")
     front = [w for w in words(t)[:3] if w not in STOP]
     if not front: issues.append(("front-load", "the first three words are all filler - move the subject forward"))

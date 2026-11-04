@@ -14,8 +14,33 @@ the pause was and how much the vocabulary changes across it. It is a first draft
 summariser.
 """
 import json, os, re, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from deadair import load, parse_ts  # noqa: E402  (same parser, one implementation)
+
+def parse_ts(s):
+    s = s.strip().replace(",", ".")
+    p = s.split(":")
+    return int(p[0]) * 3600 + int(p[1]) * 60 + float(p[2]) if len(p) == 3 else int(p[0]) * 60 + float(p[1])
+
+def load(path):
+    """Cues as (start, end, text) from .srt, .vtt or whisper .json."""
+    raw = open(path, encoding="utf-8", errors="replace").read()
+    if path.endswith(".json"):
+        d = json.loads(raw)
+        segs = d.get("segments", d if isinstance(d, list) else [])
+        return [(float(s["start"]), float(s["end"]), (s.get("text") or "").strip()) for s in segs]
+    cues, cur = [], None
+    for line in raw.splitlines():
+        m = re.match(r"\s*(\d[\d:.,]+)\s*-->\s*(\d[\d:.,]+)", line)
+        if m:
+            cur = [parse_ts(m.group(1)), parse_ts(m.group(2)), []]
+            cues.append(cur)
+        elif cur is not None and line.strip() and not line.strip().isdigit():
+            cur[2].append(re.sub(r"<[^>]+>", "", line).strip())  # inline VTT tags like <c> and <00:00:01.000>
+    out = []
+    for a, b, t in cues:
+        text = " ".join(x for x in t if x)
+        if text and not (out and out[-1][2] == text):  # auto-captions repeat the previous line
+            out.append((a, b, text))
+    return out
 
 STOP = set("the a an of for to in on and or is are was were be been with this that it as at by from "
            "you your i my we our they them he she but so if then than there here what which who how "
@@ -32,8 +57,15 @@ def mmss(t):
 def main():
     a = sys.argv[1:]
     as_json = "--json" in a; a = [x for x in a if x != "--json"]
-    target = int(a[a.index("--target") + 1]) if "--target" in a else 7
-    a = [x for x in a if not x.startswith("--") and not x.isdigit()]
+    target = 7
+    if "--target" in a:
+        i = a.index("--target")
+        try:
+            target = int(a[i + 1])
+        except (IndexError, ValueError):
+            print("--target needs a whole number, e.g. --target 8"); sys.exit(1)
+        del a[i:i + 2]
+    a = [x for x in a if not x.startswith("--")]
     if not a or not os.path.exists(a[0]): print(__doc__); sys.exit(1)
     cues = load(a[0])
     if len(cues) < 6: print("too few cues to chapter"); sys.exit(1)
@@ -56,7 +88,7 @@ def main():
     chapters = []
     for n, t in enumerate(picked):
         end = picked[n + 1] if n + 1 < len(picked) else dur
-        text = " ".join(c[2] for c in cues if c[0] >= t and c[1] <= end)
+        text = " ".join(c[2] for c in cues if t <= c[0] < end)
         kw = [w for w in keywords(text)]
         kw.sort(key=lambda w: -text.lower().count(w))
         title = " ".join(w.capitalize() for w in kw[:3]) or "Section"

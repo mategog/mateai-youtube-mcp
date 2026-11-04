@@ -9,11 +9,92 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import yt_auth
 import yt_common
 import yt_snapshot
+
+
+CLIENT_SECRET_WAIT_SECONDS = 10 * 60
+
+
+def _client_secret_problem(path: Path) -> str | None:
+    """Why this file is not a Google OAuth Desktop client, or None when it is one."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f"not readable JSON ({type(exc).__name__})"
+    if not isinstance(data, dict):
+        return "not a JSON object"
+    installed = data.get("installed")
+    if isinstance(installed, dict) and installed.get("client_id") and installed.get("client_secret"):
+        return None
+    if "installed" in data:
+        return 'its "installed" section lacks client_id or client_secret'
+    kind = next(iter(data), "")
+    return f'it is a "{kind}" client, not a Desktop app client'
+
+
+def find_client_secret(folders: list[tuple[Path, bool]], since: float) -> tuple[Path | None, list[tuple[Path, str]]]:
+    """Newest valid Desktop client_secret*.json from the first folder that has one.
+
+    `folders` is (folder, fresh_only) in priority order; with fresh_only a file must have been
+    modified at or after `since` (epoch seconds). Returns (path or None, [(skipped file, reason)]).
+    """
+    skipped: list[tuple[Path, str]] = []
+    for folder, fresh_only in folders:
+        if not folder.exists():
+            continue
+        candidates: list[tuple[float, Path]] = []
+        for path in folder.glob("client_secret*.json"):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError as exc:
+                skipped.append((path, f"cannot stat ({type(exc).__name__})"))
+                continue
+            if fresh_only and mtime < since:
+                skipped.append((path, "older than this setup run (not a fresh download)"))
+                continue
+            problem = _client_secret_problem(path)
+            if problem:
+                skipped.append((path, problem))
+                continue
+            candidates.append((mtime, path))
+        if candidates:
+            return max(candidates)[1], skipped
+    return None, skipped
+
+
+def wait_for_client_secret(
+    folders: list[tuple[Path, bool]],
+    since: float,
+    timeout: float = CLIENT_SECRET_WAIT_SECONDS,
+    sleep=None,
+    monotonic=None,
+) -> Path:
+    """Poll once a second until find_client_secret succeeds; RuntimeError after `timeout` seconds."""
+    sleep = sleep or time.sleep
+    monotonic = monotonic or time.monotonic
+    deadline = monotonic() + timeout
+    reported: set[tuple[Path, str]] = set()
+    while True:
+        found, skipped = find_client_secret(folders, since)
+        for item in skipped:
+            if item not in reported:
+                reported.add(item)
+                print(f"      Skipping {item[0]}: {item[1]}")
+        if found:
+            return found
+        if monotonic() >= deadline:
+            raise RuntimeError(
+                f"No valid Desktop OAuth client file appeared within {int(timeout // 60)} minutes. "
+                "In Google Cloud Console create an OAuth client with Application type = Desktop app, "
+                "click Download JSON (it saves to ~/Downloads), then run the setup again. "
+                f"A file downloaded before this run started is ignored; copy it into {folders[0][0]} instead."
+            )
+        sleep(1.0)
 
 
 def run_interactive_setup_wizard() -> None:
@@ -33,9 +114,7 @@ def run_interactive_setup_wizard() -> None:
         print("\n[1/4] Creating local Python virtualenv (.venv) and installing Google API SDK...")
         subprocess.run([sys.executable, "-m", "venv", str(yt_common.STATE_DIR / ".venv")], check=True)
         subprocess.run([str(yt_common.STATE_DIR / ".venv" / "bin" / "pip"), "install", "-q", "-r", str(yt_common.HERE / "requirements.txt")], check=True)
-        for sp in sorted((yt_common.STATE_DIR / ".venv" / "lib").glob("python*/site-packages")):
-            if str(sp) not in sys.path:
-                sys.path.insert(0, str(sp))
+        yt_common.add_venv_to_path()
     else:
         print("\n[1/4] Python virtualenv (.venv) is ready.")
 
@@ -78,24 +157,21 @@ def run_interactive_setup_wizard() -> None:
         downloads = Path.home() / "Downloads"
         desktop = Path.home() / "Desktop"
         print(f"\n      👀 Watching ~/Downloads and {secret_dir} for client_secret*.json (Ctrl+C to cancel)...")
-        found_file: Path | None = None
-        while not found_file:
-            for folder in (secret_dir, yt_common.STATE_DIR, downloads, desktop):
-                if not folder.exists():
-                    continue
-                matches = sorted(folder.glob("client_secret*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-                if matches:
-                    found_file = matches[0]
-                    break
-            if not found_file:
-                time.sleep(1.0)
+        # Own folders are trusted at any age; browser download folders only for a file saved from now on.
+        folders = [
+            (secret_dir, False),
+            (yt_common.STATE_DIR, False),
+            (downloads, True),
+            (desktop, True),
+        ]
+        found_file = wait_for_client_secret(folders, since=time.time())
 
         target = secret_dir / "client_secret.json"
         if found_file.resolve() != target.resolve():
             shutil.copy2(found_file, target)
         os.chmod(target, 0o600)
         secret_path = target
-        print(f"      ✓ Auto-imported {found_file.name} -> {target} (mode 0600)")
+        print(f"      ✓ Auto-imported {found_file} -> {target} (mode 0600)")
     else:
         print(f"\n[3/4] Found existing OAuth client secret: {secret_path.name}")
 

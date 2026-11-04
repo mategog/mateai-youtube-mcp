@@ -1,5 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
+const PANE_PROPS = {
+  title: 'YouTube',
+  isFocused: false,
+  bodyColumns: 44,
+  placement: 'dock',
+  scroll: { offset: 0, bodyRows: 20 },
+  view: {},
+} as const
+
 const DATA = '/home/u/.claude/plugins/data/yt-studio-mateai-youtube-mcp'
 
 const snapshot = JSON.stringify({
@@ -24,7 +33,7 @@ const stub = (on: any, files: Record<string, string>) => {
 test('pane shows channel totals and the viewed-vs-swiped number', async ($, on) => {
   stub(on, { [`${DATA}/channel_snapshot.json`]: snapshot })
 
-  const ui = await $.ui.mount({ plugin: 'yt-studio', surface: 'terminal', component: 'Pane', requestId: 'yt-dashboard' })
+  const ui = await $.ui.mount({ plugin: 'yt-studio', surface: 'terminal', component: 'Pane', requestId: 'yt-dashboard', props: PANE_PROPS })
 
   expect(await ui.find({ type: 'Text', text: '11 subscribers' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '66.7%' })).toBeDefined()
@@ -33,7 +42,7 @@ test('pane shows channel totals and the viewed-vs-swiped number', async ($, on) 
 test('pane explains how to get a first snapshot when none exists', async ($, on) => {
   stub(on, {})
 
-  const ui = await $.ui.mount({ plugin: 'yt-studio', surface: 'terminal', component: 'Pane', requestId: 'yt-dashboard' })
+  const ui = await $.ui.mount({ plugin: 'yt-studio', surface: 'terminal', component: 'Pane', requestId: 'yt-dashboard', props: PANE_PROPS })
 
   expect(await ui.find({ type: 'Text', text: 'No snapshot yet' })).toBeDefined()
 })

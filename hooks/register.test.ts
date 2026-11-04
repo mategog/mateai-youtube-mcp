@@ -10,8 +10,14 @@ const TOKEN = JSON.stringify({
   ],
 })
 
+const registered: string[] = []
+
 const stub = (on: any, files: Record<string, string>, hints?: Array<string | undefined>) => {
-  on('command.register', () => ({ value: { command: 'yt-setup' } }))
+  on('command.register', (_: unknown, e: { name: string }) => {
+    registered.push(e.name)
+
+    return { value: { command: e.name } }
+  })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('env.get', (_: unknown, e: { name: string }) => ({
     value: e.name === 'HOME' ? '/home/u' : undefined,
@@ -60,6 +66,14 @@ test('refuses a client file of the wrong type without copying it', async ($, on)
   const out = await $.command.run({ command: 'yt-setup', args: '' })
 
   expect(out.text).toMatch(/"web" client/)
+})
+
+test('one session.start registers both /yt-setup and /yt-dashboard', async ($, on) => {
+  registered.length = 0
+  stub(on, {})
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  expect([...registered].sort()).toEqual(['yt-dashboard', 'yt-setup'])
 })
 
 const MARKER = `${DATA}/.tokens/expired`

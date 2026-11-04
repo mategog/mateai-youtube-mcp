@@ -1,5 +1,7 @@
 import type { Hook, Register } from 'claude-code'
 
+import { dashboardCommand, register as registerDashboard } from './dashboard'
+
 type Api = Parameters<Hook<'session.start'>>[0]
 
 // yt-studio keeps its login files in its plugin data folder (override: MATEAI_YT_HOME).
@@ -116,7 +118,7 @@ const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' 
   )
 }
 
-export const register: Register = on => {
+const registerSetup: Register = on => {
   let projectDir = '.'
 
   on('session.start', async ($, e, next) => {
@@ -124,6 +126,7 @@ export const register: Register = on => {
       name: 'yt-setup',
       description: 'Connect the yt-studio plugin to your YouTube account (one-time)',
     })
+    await $.command.register(dashboardCommand)
     projectDir = e.cwd
     const p = await paths($)
     if ((await loginState($, p)) !== 'ok') $.ui.status('YouTube: not connected, run /yt-setup')
@@ -179,4 +182,11 @@ export const register: Register = on => {
 
     return { text: `Found your Google client file. Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.${secret === p.secret ? '' : `\n(Copied ${secret} into the plugin folder, permissions 600.)`}` }
   })
+}
+
+// A plugin names exactly one hooks module in hooks.json, so this entry point registers both parts:
+// /yt-setup (above) and /yt-dashboard (dashboard.tsx).
+export const register: Register = (on, options) => {
+  registerSetup(on, options)
+  registerDashboard(on, options)
 }

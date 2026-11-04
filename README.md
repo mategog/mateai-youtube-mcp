@@ -81,6 +81,8 @@ MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
 
 Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
 
+On Windows or Linux (untested), `/yt-setup` auto-opening the Google pages is macOS-only; use the [manual wizard](#unlock-private-youtube-studio-analytics--draft-uploads-0mo) (`python3 yt_studio.py setup`).
+
 ### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
 {
@@ -163,7 +165,7 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 | **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
 | **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
 | **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
-| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. |
+| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
 | Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
 
 Not using Claude Code, or on an older version? Use the wizard below.
@@ -172,7 +174,7 @@ Not using Claude Code, or on an older version? Use the wizard below.
 
 ## Unlock Private YouTube Studio Analytics & Draft Uploads ($0/mo)
 
-Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required** and you keep 100% of your own private quota.
+Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required while the app stays in "Testing"** (the cost: Google expires the sign-in every 7 days, see the troubleshooting table above) and you keep 100% of your own private quota.
 
 Run the **1-Command Guided Setup Wizard**:
 

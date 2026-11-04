@@ -15,6 +15,7 @@ Supports two modes:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import html as html_lib
 import json
@@ -258,6 +259,11 @@ def _saved_scopes(token_file: Path) -> list[str]:
     return scopes.split(" ") if isinstance(scopes, str) else list(scopes)
 
 
+def _expired_marker() -> Path:
+    """`.tokens/expired`: left by a failed refresh so /yt-setup knows the saved login is dead."""
+    return TOKEN_FILE.with_name("expired")
+
+
 def get_oauth_credentials(
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
     upload_scope: bool = False,
@@ -294,6 +300,8 @@ def get_oauth_credentials(
             try:
                 creds.refresh(Request())
             except RefreshError as exc:
+                with contextlib.suppress(OSError):
+                    _expired_marker().write_text("", encoding="utf-8")
                 raise RuntimeError(
                     "Your YouTube login expired or was revoked, so Google refused to renew it. "
                     "Sign in again: type /yt-setup in Claude Code, or run "
@@ -313,6 +321,8 @@ def get_oauth_credentials(
         TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
         TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
         os.chmod(TOKEN_FILE, 0o600)
+        with contextlib.suppress(OSError):
+            _expired_marker().unlink(missing_ok=True)
 
     return creds
 

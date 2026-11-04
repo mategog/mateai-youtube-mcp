@@ -260,6 +260,7 @@ def get_oauth_credentials(
 ):
     """Load cached OAuth2 token or launch local browser flow if client_secret.json exists."""
     try:
+        from google.auth.exceptions import RefreshError
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -277,7 +278,15 @@ def get_oauth_credentials(
 
     if not creds or not creds.valid:
         if not force_reauth and creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError as exc:
+                raise RuntimeError(
+                    "Your YouTube login expired or was revoked, so Google refused to renew it. "
+                    "Sign in again: type /yt-setup in Claude Code, or run "
+                    "`python3 yt_studio.py setup`. (Google apps in 'Testing' mode can expire "
+                    f"after about 7 days.)\nDetails: {exc}"
+                ) from exc
         else:
             if not client_secret_path.exists():
                 raise FileNotFoundError(

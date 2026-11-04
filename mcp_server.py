@@ -23,12 +23,16 @@ from yt_studio import (
     DEFAULT_HANDLE,
     REPORT_FILE,
     build_shorts_experiment_markdown,
+    delete_video,
     fetch_video_public_details,
     fetch_video_retention_diagnosis,
     get_best_snapshot,
+    list_channel_videos,
+    list_video_comments,
     PUBLIC_SCRAPE_ENV,
     post_video_comment,
     render_html_report,
+    reply_to_comment,
     update_video_metadata,
     upload_private_draft,
 )
@@ -43,7 +47,9 @@ SERVER_INSTRUCTIONS = (
     "Self-hosted YouTube Studio & Analytics MCP server. "
     "Use yt_channel_snapshot and yt_shorts_experiment_table to inspect channel performance and render report.html. "
     "Use yt_video_details to diagnose 100-point audience retention curves, drop-off cliffs, and traffic sources for a 11-char video_id. "
-    "Use yt_upload_draft, yt_update_video, and yt_post_comment to upload/schedule videos, update metadata/thumbnails, and post comments in YouTube Studio."
+    "Use yt_upload_draft, yt_update_video, and yt_post_comment to upload/schedule videos, update metadata/thumbnails, and post comments in YouTube Studio. "
+    "Use yt_list_videos to find video IDs, yt_list_comments and yt_reply_comment to read and answer comments, "
+    "and yt_delete_video (irreversible, needs the exact title) to remove a video; prefer yt_update_video with privacy_status to hide one."
 )
 
 TOOLS = [
@@ -345,6 +351,101 @@ TOOLS = [
         },
     },
     {
+        "name": "yt_list_videos",
+        "description": (
+            "List the authenticated channel's uploads (including private, unlisted and scheduled), newest first, with "
+            "videoId, title, privacyStatus, publishAt, views and URL. Optional `query` is a case-insensitive substring "
+            "match on title or description, applied locally. Costs ~2 quota units per 50 videos paged. Requires OAuth2."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Optional text to match in title or description."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 25, "description": "Max videos to return."},
+            },
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "List or Search Own YouTube Videos",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_list_comments",
+        "description": (
+            "Read top-level comment threads on a video (commentThreads.list, ~1 quota unit): commentId, author, text, likes, "
+            "publishedAt, replyCount and the first few replies. Single page, max 100. Use a returned commentId as "
+            "yt_reply_comment's parent_id. Fails if comments are disabled."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$", "description": "11-character YouTube video ID."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "order": {"type": "string", "enum": ["time", "relevance"], "default": "time"},
+            },
+            "required": ["video_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Read YouTube Video Comments",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_reply_comment",
+        "description": (
+            "Publish a public reply to a top-level comment (comments.insert, ~50 quota units) under the authenticated "
+            "channel identity. parent_id must be a top-level commentId from yt_list_comments. Non-idempotent."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "parent_id": {"type": "string", "minLength": 1, "description": "commentId of the top-level comment to reply to."},
+                "text": {"type": "string", "minLength": 1, "maxLength": 10000, "description": "Plain-text reply body."},
+            },
+            "required": ["parent_id", "text"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Reply to a YouTube Comment",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    },
+    {
+        "name": "yt_delete_video",
+        "description": (
+            "PERMANENTLY delete one of the channel's videos (videos.delete, ~50 quota units). Irreversible: views, "
+            "watch hours and comments are lost. To merely hide a video use yt_update_video with privacy_status. "
+            "Refuses unless confirm_title exactly equals the video's current title."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "video_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{11}$", "description": "11-character YouTube video ID."},
+                "confirm_title": {"type": "string", "minLength": 1, "description": "Exact current title of the video, as a deliberate confirmation."},
+            },
+            "required": ["video_id", "confirm_title"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Permanently Delete a YouTube Video",
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+    },
+    {
         "name": "tiktok_channel_snapshot",
         "description": (
             "Fetch authenticated TikTok profile statistics (followers, total likes, video count) and recent videos "
@@ -526,6 +627,26 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     if name == "yt_post_comment":
         res = post_video_comment(video_id=args["video_id"], text=args["text"])
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_list_videos":
+        res = list_channel_videos(query=args.get("query"), limit=int(args.get("limit", 25)))
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_list_comments":
+        res = list_video_comments(
+            video_id=args["video_id"],
+            limit=int(args.get("limit", 20)),
+            order=args.get("order", "time"),
+        )
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_reply_comment":
+        res = reply_to_comment(parent_id=args["parent_id"], text=args["text"])
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    if name == "yt_delete_video":
+        res = delete_video(video_id=args["video_id"], confirm_title=args["confirm_title"])
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     raise ValueError(f"Unknown tool: {name}")

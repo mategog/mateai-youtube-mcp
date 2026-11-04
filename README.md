@@ -103,6 +103,10 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_upload_draft` | Upload a local MP4/MOV + cover image + full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment`, and **`publish_at` schedule**). |
 | `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
+| `yt_list_videos` | List/search your uploads (private and unlisted included) to find video IDs. |
+| `yt_list_comments` | Read top-level comment threads (with replies) on a video. |
+| `yt_reply_comment` | Reply publicly to a top-level comment. |
+| `yt_delete_video` | Permanently delete a video; refuses unless you pass its exact title. |
 
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
 

@@ -17,9 +17,15 @@ HERE = Path(__file__).resolve().parent
 # State (venv, tokens, OAuth secret, snapshot, report) lives in MATEAI_YT_HOME when set
 # (the Claude Code plugin points it at ${CLAUDE_PLUGIN_DATA}), else next to this file.
 STATE_DIR = Path(os.environ.get("MATEAI_YT_HOME") or HERE).expanduser()
-for _sp in sorted((STATE_DIR / ".venv" / "lib").glob("python*/site-packages")):
-    if str(_sp) not in sys.path:
-        sys.path.insert(0, str(_sp))
+
+
+def add_venv_to_path() -> None:
+    for sp in sorted((STATE_DIR / ".venv" / "lib").glob("python*/site-packages")):
+        if str(sp) not in sys.path:
+            sys.path.insert(0, str(sp))
+
+
+add_venv_to_path()
 
 CACHE_FILE = STATE_DIR / "channel_snapshot.json"
 REPORT_FILE = STATE_DIR / "report.html"

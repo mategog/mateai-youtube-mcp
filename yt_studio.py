@@ -650,8 +650,12 @@ def update_video_metadata(
     thumbnail_path: Path | None = None,
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
     dry_run: bool = False,
+    contains_synthetic_media: bool | None = None,
 ) -> dict[str, Any]:
-    """Update title, description, tags, privacy, schedule time, or thumbnail of an existing video.
+    """Update title, description, tags, privacy, schedule time, synthetic-media flag, or thumbnail of an existing video.
+
+    Only the parts that actually change are sent to `videos.update`; in particular `status` is not re-sent
+    for title/description/tag/thumbnail edits, because `videos.list` does not return `containsSyntheticMedia`.
 
     With `dry_run=True`, return the changes that would be applied, without signing in or changing anything.
     """
@@ -666,6 +670,8 @@ def update_video_metadata(
         if publish_at is not None:
             changes["privacyStatus"] = "private"
             changes["publishAt"] = publish_at
+        if contains_synthetic_media is not None:
+            changes["containsSyntheticMedia"] = contains_synthetic_media
         if thumbnail_path:
             changes["thumbnailPath"] = str(thumbnail_path)
         return {
@@ -692,6 +698,9 @@ def update_video_metadata(
     snippet = item["snippet"]
     status = item["status"]
 
+    snippet_changed = any(v is not None for v in (title, description, tags))
+    status_changed = any(v is not None for v in (privacy_status, publish_at, contains_synthetic_media))
+
     if title is not None:
         snippet["title"] = title
     if description is not None:
@@ -703,11 +712,21 @@ def update_video_metadata(
     if publish_at is not None:
         status["privacyStatus"] = "private"
         status["publishAt"] = publish_at
+    if contains_synthetic_media is not None:
+        status["containsSyntheticMedia"] = contains_synthetic_media
 
-    updated = yt.videos().update(
-        part="snippet,status",
-        body={"id": video_id, "snippet": snippet, "status": status},
-    ).execute()
+    parts = [name for name, changed in (("snippet", snippet_changed), ("status", status_changed)) if changed]
+    body: dict[str, Any] = {"id": video_id}
+    if snippet_changed:
+        body["snippet"] = snippet
+    if status_changed:
+        body["status"] = status
+
+    # Nothing to change (e.g. thumbnail only): skip videos.update so no part is re-sent.
+    updated = (
+        yt.videos().update(part=",".join(parts), body=body).execute()
+        if parts else {"snippet": snippet, "status": status}
+    )
 
     thumb_updated = False
     if thumbnail_path and thumbnail_path.exists():

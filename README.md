@@ -103,7 +103,7 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_shorts_experiment_table` | Generate a Markdown table comparing Shorts retention, swipe-away rate, and views. |
 | `yt_video_details` | Inspect metadata and metrics for any 11-character YouTube `video_id`. |
 | `yt_upload_draft` | Upload a local MP4/MOV + cover image + full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment`, and **`publish_at` schedule**). |
-| `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
+| `yt_update_video` | Update title, description, tags, privacy status, schedule time, thumbnail, or the `contains_synthetic_media` disclosure of an existing video; parts you don't change are not re-sent. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
 
 **Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."

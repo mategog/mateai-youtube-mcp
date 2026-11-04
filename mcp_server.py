@@ -288,6 +288,10 @@ TOOLS = [
                     "type": "string",
                     "description": "Optional absolute local filesystem path to a readable PNG/JPG image (<=2MB) to upload via thumbnails.set.",
                 },
+                "contains_synthetic_media": {
+                    "type": "boolean",
+                    "description": "Set the YouTube altered/synthetic media disclosure (status.containsSyntheticMedia). Leave omitted to leave the existing disclosure untouched.",
+                },
                 "dry_run": {
                     "type": "boolean",
                     "default": False,
@@ -541,6 +545,7 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             publish_at=args.get("publish_at"),
             thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
             dry_run=bool(args.get("dry_run", False)),
+            contains_synthetic_media=args.get("contains_synthetic_media"),
         )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 

@@ -72,6 +72,95 @@ class TestExpiredLogin(unittest.TestCase):
         creds.refresh.assert_called_once()
 
 
+class TestExpiredMarker(unittest.TestCase):
+    """A failed refresh leaves `.tokens/expired` so /yt-setup knows the saved login is dead."""
+
+    def _refresh_fails(self, token):
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds.refresh.side_effect = FakeRefreshError("invalid_grant")
+        with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+                mock.patch.dict(sys.modules, _fake_google_modules(creds)):
+            with self.assertRaises(RuntimeError) as ctx:
+                yt_studio.get_oauth_credentials()
+        return str(ctx.exception)
+
+    def test_failed_refresh_writes_the_marker_next_to_the_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / ".tokens" / "token.json"
+            token.parent.mkdir()
+            token.write_text("{}", encoding="utf-8")
+            self._refresh_fails(token)
+            self.assertTrue((token.parent / "expired").exists())
+
+    def test_marker_that_cannot_be_written_does_not_hide_the_friendly_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / ".tokens" / "token.json"
+            token.parent.mkdir()
+            token.write_text("{}", encoding="utf-8")
+            token.parent.chmod(0o500)
+            try:
+                msg = self._refresh_fails(token)
+            finally:
+                token.parent.chmod(0o700)
+            self.assertIn("/yt-setup", msg)
+
+    def test_successful_refresh_removes_the_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / ".tokens" / "token.json"
+            token.parent.mkdir()
+            token.write_text(json.dumps({
+                "token": "FAKE-OLD", "refresh_token": "FAKE-REFRESH",
+                "scopes": yt_studio.SCOPES_READONLY,
+                "expiry": (dt.datetime.now() - dt.timedelta(hours=2)).isoformat(),
+            }), encoding="utf-8")
+            (token.parent / "expired").write_text("", encoding="utf-8")
+            mods = _fake_google_modules(None)
+            mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
+            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, mods):
+                yt_studio.get_oauth_credentials()
+            self.assertFalse((token.parent / "expired").exists())
+
+    def test_fresh_sign_in_removes_the_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / ".tokens" / "token.json"
+            token.parent.mkdir()
+            (token.parent / "expired").write_text("", encoding="utf-8")
+            secret = Path(tmp) / "client_secret.json"
+            secret.write_text("{}", encoding="utf-8")
+            new_creds = mock.Mock()
+            new_creds.to_json.return_value = "{}"
+            flow = mock.Mock()
+            flow.run_local_server.return_value = new_creds
+            mods = _fake_google_modules(None)
+            mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
+                from_client_secrets_file=lambda *a, **k: flow
+            )
+            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, mods):
+                yt_studio.get_oauth_credentials(client_secret_path=secret, force_reauth=True)
+            self.assertTrue(token.exists())
+            self.assertFalse((token.parent / "expired").exists())
+
+    def test_marker_left_behind_by_a_deleted_tokens_folder_does_not_block_sign_in(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / ".tokens" / "token.json"  # the folder (and its marker) is gone
+            secret = Path(tmp) / "client_secret.json"
+            secret.write_text("{}", encoding="utf-8")
+            new_creds = mock.Mock()
+            new_creds.to_json.return_value = "{}"
+            flow = mock.Mock()
+            flow.run_local_server.return_value = new_creds
+            mods = _fake_google_modules(None)
+            mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
+                from_client_secrets_file=lambda *a, **k: flow
+            )
+            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, mods):
+                yt_studio.get_oauth_credentials(client_secret_path=secret)
+            self.assertTrue(token.exists())
+
+
 class FakeScopedCredentials:
     """Mirrors google.oauth2.credentials.Credentials (google-auth 2.62): token and expiry come from
     the file, `scopes` come from the caller when given, `valid` ignores scopes, `to_json` writes

@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in the plugin does not work as expected
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste tokens, client secrets or `token.json` contents.** Remove them from anything you post here.
+  - type: dropdown
+    id: client
+    attributes:
+      label: Which client are you using?
+      options:
+        - Claude Code
+        - Claude Desktop
+        - Google Antigravity
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: macOS 15.1
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: Shown in `.claude-plugin/plugin.json`, or run `ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error text
+      description: Copy it as shown, without retyping.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: false

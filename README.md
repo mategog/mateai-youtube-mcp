@@ -108,6 +108,8 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_reply_comment` | Reply publicly to a top-level comment. |
 | `yt_delete_video` | Permanently delete a video; refuses unless you pass its exact title. |
 
+**Dangerous tools.** `yt_delete_video` is always marked `DANGEROUS`: its first call is refused with "CONFIRMATION REQUIRED" until the agent has asked you and repeats the call with `user_confirmed=true`. To gate more tools the same way, set `MATEAI_YT_CONFIRM` to a comma-separated list, e.g. `MATEAI_YT_CONFIRM=yt_reply_comment,yt_post_comment,yt_update_video`. This is a speed bump, not a lock: the server can't verify the agent actually asked you.
+
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
 
 | Tool | Description |

@@ -164,8 +164,75 @@ class TestMcpRegistration(unittest.TestCase):
         self.assertEqual(json.loads(out["content"][0]["text"]), {"videos": []})
 
         with patch("mcp_server.delete_video", return_value={"videoId": "x"}) as m:
-            _handle_tool_call("yt_delete_video", {"video_id": "v" * 11, "confirm_title": "T"})
+            _handle_tool_call("yt_delete_video", {"video_id": "v" * 11, "confirm_title": "T", "user_confirmed": True})
         m.assert_called_once_with(video_id="v" * 11, confirm_title="T")
+
+
+class TestConfirmGate(unittest.TestCase):
+    VID = "v" * 11
+
+    def _call(self, name, args, env=None):
+        import os
+        from mcp_server import _handle_tool_call
+
+        with patch.dict(os.environ, {"MATEAI_YT_CONFIRM": env or ""}):
+            return _handle_tool_call(name, args)
+
+    def test_delete_is_always_gated_until_user_confirmed(self):
+        with patch("mcp_server.delete_video") as m:
+            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T"})
+        m.assert_not_called()
+        self.assertTrue(out["isError"])
+        text = out["content"][0]["text"]
+        self.assertIn("CONFIRMATION REQUIRED", text)
+        self.assertIn("nothing was done", text)
+        self.assertIn("yt_delete_video", text)
+
+    def test_delete_runs_once_user_confirmed(self):
+        with patch("mcp_server.delete_video", return_value={"videoId": self.VID}) as m:
+            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T", "user_confirmed": True})
+        m.assert_called_once_with(video_id=self.VID, confirm_title="T")
+        self.assertNotIn("isError", out)
+
+    def test_env_adds_extra_gated_tools_but_not_others(self):
+        with patch("mcp_server.reply_to_comment") as reply, patch("mcp_server.list_channel_videos", return_value={"videos": []}) as lst:
+            gated = self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"}, env="yt_reply_comment")
+            self._call("yt_list_videos", {}, env="yt_reply_comment")
+        reply.assert_not_called()
+        self.assertTrue(gated["isError"])
+        lst.assert_called_once()
+
+    def test_reply_is_not_gated_by_default(self):
+        with patch("mcp_server.reply_to_comment", return_value={"commentId": "x"}) as reply:
+            self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"})
+        reply.assert_called_once()
+
+    def test_unknown_env_name_warns_and_does_not_crash(self):
+        import io
+        import os
+        from contextlib import redirect_stderr
+        from mcp_server import confirm_tools
+
+        buf = io.StringIO()
+        with patch.dict(os.environ, {"MATEAI_YT_CONFIRM": "yt_reply_coment, yt_post_comment"}), redirect_stderr(buf):
+            tools = confirm_tools()
+        self.assertEqual(tools, {"yt_delete_video", "yt_post_comment"})
+        self.assertIn("yt_reply_coment", buf.getvalue())
+
+    def test_listing_marks_gated_tools_and_leaves_tools_constant_untouched(self):
+        import os
+        from mcp_server import TOOLS, listed_tools
+
+        with patch.dict(os.environ, {"MATEAI_YT_CONFIRM": "yt_post_comment"}):
+            listed = {t["name"]: t for t in listed_tools()}
+        for n in ("yt_delete_video", "yt_post_comment"):
+            self.assertTrue(listed[n]["description"].startswith("DANGEROUS"))
+            self.assertIn("user_confirmed", listed[n]["inputSchema"]["properties"])
+        self.assertFalse(listed["yt_list_videos"]["description"].startswith("DANGEROUS"))
+        self.assertNotIn("user_confirmed", listed["yt_list_videos"]["inputSchema"]["properties"])
+        by_name = {t["name"]: t for t in TOOLS}
+        self.assertFalse(by_name["yt_delete_video"]["description"].startswith("DANGEROUS"))
+        self.assertNotIn("user_confirmed", by_name["yt_delete_video"]["inputSchema"]["properties"])
 
 
 if __name__ == "__main__":

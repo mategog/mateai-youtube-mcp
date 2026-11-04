@@ -7,7 +7,9 @@ Licensed under Apache 2.0 with Commons Clause Restriction v1.0.
 
 from __future__ import annotations
 
+import copy
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -542,7 +544,56 @@ TOOLS = [
 ]
 
 
+ALWAYS_CONFIRM = {"yt_delete_video"}
+CONFIRM_ENV = "MATEAI_YT_CONFIRM"
+
+
+def confirm_tools() -> set[str]:
+    """Tools that bounce until the user has explicitly said yes in chat.
+
+    yt_delete_video is always included. MATEAI_YT_CONFIRM adds more: a comma-separated list of
+    tool names, e.g. "yt_reply_comment,yt_post_comment". Unknown names are warned about on stderr.
+    """
+    known = {t["name"] for t in TOOLS}
+    extra = {s.strip() for s in os.environ.get(CONFIRM_ENV, "").split(",") if s.strip()}
+    for bad in sorted(extra - known):
+        print(f"mateai-youtube-mcp: ignoring unknown tool {bad!r} in {CONFIRM_ENV}", file=sys.stderr)
+    return ALWAYS_CONFIRM | (extra & known)
+
+
+def listed_tools() -> list[dict[str, Any]]:
+    """TOOLS as advertised to the client: gated tools get a DANGEROUS marker and a user_confirmed flag."""
+    gated = confirm_tools()
+    out = copy.deepcopy(TOOLS)
+    for tool in out:
+        if tool["name"] in gated:
+            tool["description"] = (
+                "DANGEROUS — ask the user for an explicit yes in chat before calling; the first call is refused "
+                "until user_confirmed=true. " + tool["description"]
+            )
+            tool["inputSchema"]["properties"]["user_confirmed"] = {
+                "type": "boolean",
+                "description": "Set true ONLY after the user explicitly approved this exact action in chat. Never set it on your own.",
+            }
+    return out
+
+
 def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name in confirm_tools() and not args.get("user_confirmed"):
+        shown = {k: v for k, v in args.items() if k != "user_confirmed"}
+        return {
+            "isError": True,
+            "content": [{
+                "type": "text",
+                "text": (
+                    f"CONFIRMATION REQUIRED — nothing was done. {name} is marked dangerous. "
+                    f"Tell the user exactly what this call will do (tool {name}, arguments {json.dumps(shown)}) "
+                    "and ask for an explicit yes. Only after they say yes, repeat the same call with user_confirmed=true. "
+                    "Never set user_confirmed on your own."
+                ),
+            }],
+        }
+
     if name == "tiktok_channel_snapshot":
         snap = fetch_tiktok_snapshot()
         TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
@@ -689,7 +740,7 @@ def main() -> None:
             resp = {
                 "jsonrpc": "2.0",
                 "id": msg_id,
-                "result": {"tools": TOOLS},
+                "result": {"tools": listed_tools()},
             }
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()

@@ -36,7 +36,7 @@ jobs:
 
       - name: Compile, run unit tests & test MCP JSON-RPC handshake
         run: |
-          python3 -m py_compile yt_studio.py tiktok_studio.py mcp_server.py skills/yt-chapters/chapters.py skills/yt-title-lint/title.py
+          python3 -m py_compile *.py skills/yt-chapters/chapters.py skills/yt-title-lint/title.py
           python3 -m unittest discover -s tests -p "test_*.py" -v
           OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | python3 mcp_server.py)
           echo "$OUT" | grep -q '"mateai-youtube-mcp"'

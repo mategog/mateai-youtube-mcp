@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import yt_auth
 import yt_studio
 
 
@@ -37,7 +38,7 @@ class TestExpiredLogin(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
             token.write_text("{}", encoding="utf-8")
-            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, _fake_google_modules(creds)):
                 result = yt_studio.get_oauth_credentials()
             return result, token.exists()
@@ -58,7 +59,7 @@ class TestExpiredLogin(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
             token.write_text("{}", encoding="utf-8")
-            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, _fake_google_modules(creds)):
                 with self.assertRaises(RuntimeError):
                     yt_studio.get_oauth_credentials()
@@ -78,7 +79,7 @@ class TestExpiredMarker(unittest.TestCase):
     def _refresh_fails(self, token):
         creds = mock.Mock(valid=False, expired=True, refresh_token="r")
         creds.refresh.side_effect = FakeRefreshError("invalid_grant")
-        with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+        with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                 mock.patch.dict(sys.modules, _fake_google_modules(creds)):
             with self.assertRaises(RuntimeError) as ctx:
                 yt_studio.get_oauth_credentials()
@@ -116,7 +117,7 @@ class TestExpiredMarker(unittest.TestCase):
             (token.parent / "expired").write_text("", encoding="utf-8")
             mods = _fake_google_modules(None)
             mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
-            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, mods):
                 yt_studio.get_oauth_credentials()
             self.assertFalse((token.parent / "expired").exists())
@@ -136,7 +137,7 @@ class TestExpiredMarker(unittest.TestCase):
             mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
                 from_client_secrets_file=lambda *a, **k: flow
             )
-            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, mods):
                 yt_studio.get_oauth_credentials(client_secret_path=secret, force_reauth=True)
             self.assertTrue(token.exists())
@@ -155,7 +156,7 @@ class TestExpiredMarker(unittest.TestCase):
             mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
                 from_client_secrets_file=lambda *a, **k: flow
             )
-            with mock.patch.object(yt_studio, "TOKEN_FILE", token), \
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, mods):
                 yt_studio.get_oauth_credentials(client_secret_path=secret)
             self.assertTrue(token.exists())
@@ -204,7 +205,7 @@ class TestScopesSurviveReadCalls(unittest.TestCase):
     def _call(self, token_path, upload_scope):
         mods = _fake_google_modules(None)
         mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
-        with mock.patch.object(yt_studio, "TOKEN_FILE", token_path), \
+        with mock.patch.object(yt_auth, "TOKEN_FILE", token_path), \
                 mock.patch.dict(sys.modules, mods):
             return yt_studio.get_oauth_credentials(upload_scope=upload_scope)
 

@@ -11,8 +11,9 @@ import copy
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+import yt_common
 from tiktok_studio import (
     TIKTOK_CACHE_FILE,
     TIKTOK_HISTORY_FILE,
@@ -71,7 +72,44 @@ SERVER_INSTRUCTIONS = (
     "Dangerous actions ask the user first; yt_get_safety_settings / yt_set_safety_settings (the /yt-safety command) change which ones."
 )
 
-TOOLS = [
+# Each tool's schema sits directly above its handler. @_tool registers both, in file order,
+# so TOOLS (what tools/list advertises) and _HANDLERS (what tools/call runs) cannot drift apart.
+# Handlers look up yt_studio/tiktok_studio functions as module globals at call time.
+TOOLS: list[dict[str, Any]] = []
+_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+
+
+def _tool(schema: dict[str, Any]) -> Callable[[Callable], Callable]:
+    def register(handler: Callable) -> Callable:
+        TOOLS.append(schema)
+        _HANDLERS[schema["name"]] = handler
+        return handler
+
+    return register
+
+
+def _text_result(text: str) -> dict[str, Any]:
+    return {"content": [{"type": "text", "text": text}]}
+
+
+def _json_result(data: Any) -> dict[str, Any]:
+    return _text_result(json.dumps(data, indent=2))
+
+
+def _opt_path(args: dict[str, Any], key: str) -> Path | None:
+    return Path(args[key]) if args.get(key) else None
+
+
+def _send(msg: dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+
+
+def _reply(msg_id: Any, result: dict[str, Any]) -> None:
+    _send({"jsonrpc": "2.0", "id": msg_id, "result": result})
+
+
+@_tool(
     {
         "name": "yt_channel_snapshot",
         "description": (
@@ -117,7 +155,18 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_channel_snapshot(args: dict[str, Any]) -> dict[str, Any]:
+    handle = args.get("handle") or DEFAULT_HANDLE
+    force_public = bool(args.get("force_public", False))
+    snap = get_best_snapshot(handle=handle, force_public=force_public)
+    render_html_report(snap, REPORT_FILE)
+    snap["dashboardPath"] = str(REPORT_FILE)
+    return _json_result(snap)
+
+
+@_tool(
     {
         "name": "yt_shorts_experiment_table",
         "description": (
@@ -145,7 +194,15 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_shorts_experiment_table(args: dict[str, Any]) -> dict[str, Any]:
+    handle = args.get("handle") or DEFAULT_HANDLE
+    snap = get_best_snapshot(handle=handle)
+    return _text_result(build_shorts_experiment_markdown(snap))
+
+
+@_tool(
     {
         "name": "yt_video_details",
         "description": (
@@ -194,7 +251,24 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
+    video_id = args["video_id"]
+    words_path = _opt_path(args, "words_or_script_path")
+    if PUBLIC_SCRAPE_ENV or bool(args.get("force_public", False)):
+        details = fetch_video_public_details(video_id)
+    else:
+        details = {"videoId": video_id, "url": f"https://www.youtube.com/watch?v={video_id}", "sourceMode": "studio_only"}
+    try:
+        diag = fetch_video_retention_diagnosis(video_id, words_or_script_path=words_path)
+        details["studioDiagnosis"] = diag
+    except Exception as exc:
+        details["studioDiagnosisError"] = str(exc)
+    return _json_result(details)
+
+
+@_tool(
     {
         "name": "yt_upload_draft",
         "description": (
@@ -274,7 +348,30 @@ TOOLS = [
             "idempotentHint": False,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(upload_private_draft(
+        video_path=Path(args["video_path"]),
+        spec_path=_opt_path(args, "spec_path"),
+        title=args.get("title"),
+        description=args.get("description"),
+        tags=args.get("tags"),
+        hashtags=args.get("hashtags"),
+        pinned_comment=args.get("pinned_comment"),
+        category_id=args.get("category_id", "28"),
+        language=args.get("language", "en"),
+        made_for_kids=bool(args.get("made_for_kids", False)),
+        contains_synthetic_media=bool(args.get("contains_synthetic_media", False)),
+        thumbnail_path=_opt_path(args, "thumbnail_path"),
+        privacy_status=args.get("privacy_status", "private"),
+        publish_at=args.get("publish_at"),
+        auto_post_comment=bool(args.get("auto_post_comment", False)),
+        dry_run=bool(args.get("dry_run", False)),
+    ))
+
+
+@_tool(
     {
         "name": "yt_update_video",
         "description": (
@@ -339,7 +436,23 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_update_video(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(update_video_metadata(
+        video_id=args["video_id"],
+        title=args.get("title"),
+        description=args.get("description"),
+        tags=args.get("tags"),
+        privacy_status=args.get("privacy_status"),
+        publish_at=args.get("publish_at"),
+        thumbnail_path=_opt_path(args, "thumbnail_path"),
+        dry_run=bool(args.get("dry_run", False)),
+        contains_synthetic_media=args.get("contains_synthetic_media"),
+    ))
+
+
+@_tool(
     {
         "name": "yt_post_comment",
         "description": (
@@ -387,7 +500,15 @@ TOOLS = [
             "idempotentHint": False,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_post_comment(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(post_video_comment(
+        video_id=args["video_id"], text=args["text"], dry_run=bool(args.get("dry_run", False))
+    ))
+
+
+@_tool(
     {
         "name": "yt_list_videos",
         "description": (
@@ -410,7 +531,13 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_list_videos(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(list_channel_videos(query=args.get("query"), limit=int(args.get("limit", 25))))
+
+
+@_tool(
     {
         "name": "yt_list_comments",
         "description": (
@@ -435,7 +562,17 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_list_comments(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(list_video_comments(
+        video_id=args["video_id"],
+        limit=int(args.get("limit", 20)),
+        order=args.get("order", "time"),
+    ))
+
+
+@_tool(
     {
         "name": "yt_reply_comment",
         "description": (
@@ -458,7 +595,13 @@ TOOLS = [
             "idempotentHint": False,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_reply_comment(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(reply_to_comment(parent_id=args["parent_id"], text=args["text"]))
+
+
+@_tool(
     {
         "name": "yt_delete_video",
         "description": (
@@ -482,7 +625,13 @@ TOOLS = [
             "idempotentHint": False,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_yt_delete_video(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(delete_video(video_id=args["video_id"], confirm_title=args["confirm_title"]))
+
+
+@_tool(
     {
         "name": "yt_get_safety_settings",
         "description": (
@@ -497,7 +646,13 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": False,
         },
-    },
+    }
+)
+def _do_yt_get_safety_settings(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(get_safety_settings())
+
+
+@_tool(
     {
         "name": "yt_set_safety_settings",
         "description": (
@@ -524,7 +679,13 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": False,
         },
-    },
+    }
+)
+def _do_yt_set_safety_settings(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(set_safety_settings(list(args.get("confirm", []))))
+
+
+@_tool(
     {
         "name": "tiktok_channel_snapshot",
         "description": (
@@ -545,7 +706,16 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_tiktok_channel_snapshot(args: dict[str, Any]) -> dict[str, Any]:
+    snap = fetch_tiktok_snapshot()
+    yt_common.write_snapshot_cache(snap, TIKTOK_CACHE_FILE)
+    append_tiktok_history(snap, history_file=TIKTOK_HISTORY_FILE)
+    return _json_result(snap)
+
+
+@_tool(
     {
         "name": "tiktok_upload_draft",
         "description": (
@@ -586,7 +756,18 @@ TOOLS = [
             "idempotentHint": False,
             "openWorldHint": True,
         },
-    },
+    }
+)
+def _do_tiktok_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(upload_tiktok_inbox_draft(
+        video_path=Path(args["video_path"]),
+        spec_path=_opt_path(args, "spec_path"),
+        title=args.get("title"),
+        hashtags=args.get("hashtags"),
+    ))
+
+
+@_tool(
     {
         "name": "cross_platform_shorts_table",
         "description": (
@@ -618,8 +799,14 @@ TOOLS = [
             "idempotentHint": True,
             "openWorldHint": True,
         },
-    },
-]
+    }
+)
+def _do_cross_platform_shorts_table(args: dict[str, Any]) -> dict[str, Any]:
+    yt_handle = args.get("yt_handle") or DEFAULT_HANDLE
+    yt_force_public = bool(args.get("yt_force_public", False))
+    yt_snap = get_best_snapshot(handle=yt_handle, force_public=yt_force_public)
+    tt_snap = fetch_tiktok_snapshot()
+    return _text_result(build_cross_platform_table(yt_snap, tt_snap))
 
 
 def _saved_confirm() -> set[str]:
@@ -688,126 +875,17 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             }],
         }
 
-    if name == "tiktok_channel_snapshot":
-        snap = fetch_tiktok_snapshot()
-        TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
-        append_tiktok_history(snap, history_file=TIKTOK_HISTORY_FILE)
-        return {"content": [{"type": "text", "text": json.dumps(snap, indent=2)}]}
+    handler = _HANDLERS.get(name)
+    if handler is None:
+        raise ValueError(f"Unknown tool: {name}")
+    return handler(args)
 
-    if name == "tiktok_upload_draft":
-        res = upload_tiktok_inbox_draft(
-            video_path=Path(args["video_path"]),
-            spec_path=Path(args["spec_path"]) if args.get("spec_path") else None,
-            title=args.get("title"),
-            hashtags=args.get("hashtags"),
-        )
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
-    if name == "cross_platform_shorts_table":
-        yt_handle = args.get("yt_handle") or DEFAULT_HANDLE
-        yt_force_public = bool(args.get("yt_force_public", False))
-        yt_snap = get_best_snapshot(handle=yt_handle, force_public=yt_force_public)
-        tt_snap = fetch_tiktok_snapshot()
-        md = build_cross_platform_table(yt_snap, tt_snap)
-        return {"content": [{"type": "text", "text": md}]}
-
-    if name == "yt_channel_snapshot":
-        handle = args.get("handle") or DEFAULT_HANDLE
-        force_public = bool(args.get("force_public", False))
-        snap = get_best_snapshot(handle=handle, force_public=force_public)
-        render_html_report(snap, REPORT_FILE)
-        snap["dashboardPath"] = str(REPORT_FILE)
-        return {"content": [{"type": "text", "text": json.dumps(snap, indent=2)}]}
-
-    if name == "yt_shorts_experiment_table":
-        handle = args.get("handle") or DEFAULT_HANDLE
-        snap = get_best_snapshot(handle=handle)
-        md = build_shorts_experiment_markdown(snap)
-        return {"content": [{"type": "text", "text": md}]}
-
-    if name == "yt_video_details":
-        video_id = args["video_id"]
-        words_path = Path(args["words_or_script_path"]) if args.get("words_or_script_path") else None
-        if PUBLIC_SCRAPE_ENV or bool(args.get("force_public", False)):
-            details = fetch_video_public_details(video_id)
-        else:
-            details = {"videoId": video_id, "url": f"https://www.youtube.com/watch?v={video_id}", "sourceMode": "studio_only"}
-        try:
-            diag = fetch_video_retention_diagnosis(video_id, words_or_script_path=words_path)
-            details["studioDiagnosis"] = diag
-        except Exception as exc:
-            details["studioDiagnosisError"] = str(exc)
-        return {"content": [{"type": "text", "text": json.dumps(details, indent=2)}]}
-
-    if name == "yt_upload_draft":
-        res = upload_private_draft(
-            video_path=Path(args["video_path"]),
-            spec_path=Path(args["spec_path"]) if args.get("spec_path") else None,
-            title=args.get("title"),
-            description=args.get("description"),
-            tags=args.get("tags"),
-            hashtags=args.get("hashtags"),
-            pinned_comment=args.get("pinned_comment"),
-            category_id=args.get("category_id", "28"),
-            language=args.get("language", "en"),
-            made_for_kids=bool(args.get("made_for_kids", False)),
-            contains_synthetic_media=bool(args.get("contains_synthetic_media", False)),
-            thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
-            privacy_status=args.get("privacy_status", "private"),
-            publish_at=args.get("publish_at"),
-            auto_post_comment=bool(args.get("auto_post_comment", False)),
-            dry_run=bool(args.get("dry_run", False)),
-        )
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_update_video":
-        res = update_video_metadata(
-            video_id=args["video_id"],
-            title=args.get("title"),
-            description=args.get("description"),
-            tags=args.get("tags"),
-            privacy_status=args.get("privacy_status"),
-            publish_at=args.get("publish_at"),
-            thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
-            dry_run=bool(args.get("dry_run", False)),
-            contains_synthetic_media=args.get("contains_synthetic_media"),
-        )
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_post_comment":
-        res = post_video_comment(
-            video_id=args["video_id"], text=args["text"], dry_run=bool(args.get("dry_run", False))
-        )
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_list_videos":
-        res = list_channel_videos(query=args.get("query"), limit=int(args.get("limit", 25)))
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_list_comments":
-        res = list_video_comments(
-            video_id=args["video_id"],
-            limit=int(args.get("limit", 20)),
-            order=args.get("order", "time"),
-        )
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_reply_comment":
-        res = reply_to_comment(parent_id=args["parent_id"], text=args["text"])
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_delete_video":
-        res = delete_video(video_id=args["video_id"], confirm_title=args["confirm_title"])
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    if name == "yt_get_safety_settings":
-        return {"content": [{"type": "text", "text": json.dumps(get_safety_settings(), indent=2)}]}
-
-    if name == "yt_set_safety_settings":
-        res = set_safety_settings(list(args.get("confirm", [])))
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    raise ValueError(f"Unknown tool: {name}")
+_EMPTY_LISTS = {
+    "prompts/list": {"prompts": []},
+    "resources/list": {"resources": []},
+    "resources/templates/list": {"resourceTemplates": []},
+}
 
 
 def main() -> None:
@@ -825,82 +903,35 @@ def main() -> None:
 
         if method == "initialize":
             params = msg.get("params") or {}
-            client_proto = params.get("protocolVersion") or "2024-11-05"
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "protocolVersion": client_proto,
-                    "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
-                    "serverInfo": SERVER_INFO,
-                    "instructions": SERVER_INSTRUCTIONS,
-                },
-            }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
+            _reply(msg_id, {
+                "protocolVersion": params.get("protocolVersion") or "2024-11-05",
+                "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
+                "serverInfo": SERVER_INFO,
+                "instructions": SERVER_INSTRUCTIONS,
+            })
         elif method and method.startswith("notifications/"):
             continue
         elif method == "ping":
-            sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {}}) + "\n")
-            sys.stdout.flush()
+            _reply(msg_id, {})
         elif method == "tools/list":
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"tools": listed_tools()},
-            }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
-        elif method == "prompts/list":
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"prompts": []},
-            }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
-        elif method == "resources/list":
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"resources": []},
-            }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
-        elif method == "resources/templates/list":
-            resp = {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {"resourceTemplates": []},
-            }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
+            _reply(msg_id, {"tools": listed_tools()})
+        elif isinstance(method, str) and method in _EMPTY_LISTS:
+            _reply(msg_id, _EMPTY_LISTS[method])
         elif method == "tools/call":
             params = msg.get("params", {})
             tool_name = params.get("name", "")
             tool_args = params.get("arguments", {}) or {}
             try:
                 result = _handle_tool_call(tool_name, tool_args)
-                resp = {"jsonrpc": "2.0", "id": msg_id, "result": result}
             except Exception as exc:
-                resp = {
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "result": {
-                        "isError": True,
-                        "content": [{"type": "text", "text": f"Error: {exc}"}],
-                    },
-                }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
+                result = {"isError": True, "content": [{"type": "text", "text": f"Error: {exc}"}]}
+            _reply(msg_id, result)
         elif msg_id is not None:
-            resp = {
+            _send({
                 "jsonrpc": "2.0",
                 "id": msg_id,
                 "error": {"code": -32601, "message": f"Method not found: {method}"},
-            }
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
+            })
 
 
 if __name__ == "__main__":

@@ -284,8 +284,8 @@ def get_oauth_credentials(
                 raise RuntimeError(
                     "Your YouTube login expired or was revoked, so Google refused to renew it. "
                     "Sign in again: type /yt-setup in Claude Code, or run "
-                    "`python3 yt_studio.py setup`. (Google apps in 'Testing' mode can expire "
-                    f"after about 7 days.)\nDetails: {exc}"
+                    "`python3 yt_studio.py setup`. (Google ends logins after 7 days for apps in "
+                    f"'Testing' mode.)\nDetails: {exc}"
                 ) from exc
         else:
             if not client_secret_path.exists():

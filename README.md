@@ -161,7 +161,7 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 | **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
 | **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
 | **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
-| Asked to log in again after about a week | Apps in "Testing" mode can have sign-ins that expire after about 7 days. Publishing the app on the Audience page may avoid that. **[unconfirmed]** |
+| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. |
 | Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
 
 Not using Claude Code, or on an older version? Use the wizard below.

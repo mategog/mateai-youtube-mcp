@@ -179,7 +179,7 @@ def run_interactive_setup_wizard() -> None:
     print("\n[4/4] Launching Google account & YouTube channel selector in your browser...")
     yt_auth.get_oauth_credentials(client_secret_path=secret_path, upload_scope=True, force_reauth=True)
     snap = yt_snapshot.fetch_studio_channel_snapshot(client_secret_path=secret_path)
-    yt_common.CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    yt_common.write_snapshot_cache(snap, yt_common.CACHE_FILE)
     if yt_common.TEMPLATE_FILE.exists():
         yt_snapshot.render_html_report(snap, yt_common.REPORT_FILE)
         webbrowser.open(yt_common.REPORT_FILE.as_uri())

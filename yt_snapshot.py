@@ -39,7 +39,7 @@ def _http_status(exc: Exception) -> int | None:
 def fetch_studio_channel_snapshot(
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
     days: int = 90,
-) -> dict[str, Any]:
+) -> yt_common.Snapshot:
     """Fetch full private Studio metrics via YouTube Data API v3 + YouTube Analytics API v2."""
     yt, yta = yt_auth._youtube_and_analytics_clients(client_secret_path)
 

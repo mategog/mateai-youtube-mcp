@@ -9,6 +9,7 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import yt_common
@@ -54,7 +55,7 @@ def fetch_video_public_details(video_id: str, is_short_hint: bool = False) -> di
         if likes_m2:
             likes = int(likes_m2.group(1).replace(",", "")) + 1
 
-    is_short = is_short_hint or (0 < length_sec <= 180 and ("#Shorts" in description or is_short_hint))
+    is_short = is_short_hint or (0 < length_sec <= 180 and "#Shorts" in description)
 
     return {
         "videoId": video_id,
@@ -78,7 +79,7 @@ def fetch_video_public_details(video_id: str, is_short_hint: bool = False) -> di
     }
 
 
-def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any]:
+def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> yt_common.Snapshot:
     """Fetch public channel metadata, videos, and Shorts without requiring OAuth."""
     clean_handle = handle if handle.startswith("@") else f"@{handle}"
     base_url = f"https://www.youtube.com/{clean_handle}"
@@ -100,34 +101,16 @@ def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any
     subs_text = subs_m.group(1) if subs_m else None  # unknown: never invent a count
 
     # Extract video IDs in order of appearance
-    long_ids: list[str] = []
-    for vid in re.findall(r'"videoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})"', videos_html):
-        if vid not in long_ids:
-            long_ids.append(vid)
+    long_ids = list(dict.fromkeys(re.findall(r'"videoRenderer":\{"videoId":"([a-zA-Z0-9_-]{11})"', videos_html)))
     if not long_ids:
-        for vid in re.findall(r'"/watch\?v=([a-zA-Z0-9_-]{11})"', videos_html):
-            if vid not in long_ids:
-                long_ids.append(vid)
+        long_ids = list(dict.fromkeys(re.findall(r'"/watch\?v=([a-zA-Z0-9_-]{11})"', videos_html)))
+    short_ids = list(dict.fromkeys(re.findall(r'"/shorts/([a-zA-Z0-9_-]{11})"', shorts_html)))
 
-    short_ids: list[str] = []
-    for vid in re.findall(r'"/shorts/([a-zA-Z0-9_-]{11})"', shorts_html):
-        if vid not in short_ids:
-            short_ids.append(vid)
-
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-
-    for vid in short_ids:
-        if vid in seen:
-            continue
-        seen.add(vid)
-        items.append(fetch_video_public_details(vid, is_short_hint=True))
-
-    for vid in long_ids:
-        if vid in seen:
-            continue
-        seen.add(vid)
-        items.append(fetch_video_public_details(vid, is_short_hint=False))
+    # Shorts first; a video listed on both pages counts once, as a Short.
+    wanted = {**{vid: True for vid in short_ids}, **{vid: False for vid in long_ids if vid not in short_ids}}
+    # One page fetch per video: run them side by side. map() keeps the order, and the first failure raises as before.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        items = list(pool.map(lambda kv: fetch_video_public_details(kv[0], is_short_hint=kv[1]), wanted.items()))
 
     items.sort(key=lambda x: (x.get("publishDate") or "", x.get("views") or 0), reverse=True)
 

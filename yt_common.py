@@ -14,6 +14,7 @@ import ssl
 import sys
 import urllib.request
 from pathlib import Path
+from typing import Any, TypedDict
 
 HERE = Path(__file__).resolve().parent
 # State (venv, tokens, OAuth secret, snapshot, report) lives in MATEAI_YT_HOME when set
@@ -70,7 +71,66 @@ def _parse_iso_duration(iso_str: str) -> int:
     return h * 3600 + mins * 60 + s
 
 
-def snapshot_envelope(mode: str, channel: dict, videos: list[dict], *, youtube_counts: bool) -> dict:
+# The snapshot shape shared by the public, Studio and TikTok fetchers, the HTML report and the tables.
+# Annotations only (nothing is checked at runtime). Studio-only analytics fields are None in public mode.
+class _YouTubeVideoRequired(TypedDict):
+    videoId: str
+    title: str
+    format: str  # "short" | "long"
+    publishDate: str
+    durationSec: int
+    views: int
+    likes: int | None
+    comments: int | None
+    engagedViews: int | None
+    viewedVsSwipedPct: float | None
+    avgViewDurationSec: float | None
+    avgViewPct: float | None
+    watchTimeMin: float | None
+    subsGained: int | None
+    url: str
+    thumbnail: str
+    descriptionPreview: str
+    sourceMode: str  # "public" | "studio_oauth"
+
+
+class YouTubeVideo(_YouTubeVideoRequired, total=False):
+    privacyStatus: str  # Studio mode only
+
+
+class TikTokVideo(TypedDict):
+    videoId: str
+    title: str
+    videoDescription: str
+    publishDate: str
+    durationSec: int
+    views: int
+    likes: int
+    comments: int
+    shares: int
+    url: str
+    thumbnail: str
+    sourceMode: str  # "tiktok_oauth"
+
+
+class Totals(TypedDict, total=False):
+    videoCount: int  # videos in THIS snapshot (a TikTok channel's own videoCount is the account total)
+    shortsCount: int  # YouTube only
+    longCount: int  # YouTube only
+    totalViews: int
+    topVideo: dict[str, Any] | None
+
+
+class Snapshot(TypedDict):
+    generatedAt: str
+    mode: str  # "public" | "studio_oauth" | "tiktok_oauth"
+    channel: dict[str, Any]  # YouTube: handle, title, description, subscribersText, avatarUrl, url; TikTok: see fetch_tiktok_snapshot
+    totals: Totals
+    videos: list[Any]  # YouTubeVideo or TikTokVideo
+    attribution: str
+
+
+def snapshot_envelope(mode: str, channel: dict, videos: list[dict], *, youtube_counts: bool) -> Snapshot:
     """The snapshot shape shared by the public, Studio and TikTok fetchers."""
     totals = {"videoCount": len(videos)}
     if youtube_counts:

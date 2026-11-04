@@ -170,6 +170,10 @@ def build_cross_platform_table(yt_snapshot: dict[str, Any], tt_snapshot: dict[st
     ]
     yt_shorts = [v for v in yt_snapshot.get("videos", []) if v.get("format") == "short"]
     tt_videos = list(tt_snapshot.get("videos", []))
+    tt_norms = [
+        (normalize_short_title(tv.get("title", "")), normalize_short_title(tv.get("videoDescription", "")))
+        for tv in tt_videos
+    ]
     matched_tt_indices: set[int] = set()
 
     for yv in yt_shorts:
@@ -179,9 +183,7 @@ def build_cross_platform_table(yt_snapshot: dict[str, Any], tt_snapshot: dict[st
             for idx, tv in enumerate(tt_videos):
                 if idx in matched_tt_indices:
                     continue
-                tt_title_norm = normalize_short_title(tv.get("title", ""))
-                tt_desc_norm = normalize_short_title(tv.get("videoDescription", ""))
-                if yt_norm in (tt_title_norm, tt_desc_norm):
+                if yt_norm in tt_norms[idx]:
                     matched_tt = tv
                     matched_tt_indices.add(idx)
                     break
@@ -390,7 +392,7 @@ def get_valid_tiktok_token(
 def fetch_tiktok_snapshot(
     token_file: Path = TIKTOK_TOKEN_FILE,
     client_file: Path = TIKTOK_CLIENT_FILE,
-) -> dict[str, Any]:
+) -> yt_common.Snapshot:
     """Fetch official TikTok user stats and recent videos via Display API v2."""
     token = get_valid_tiktok_token(token_file=token_file, client_file=client_file)
     user_payload = _http_json(USER_INFO_URL, token=token, body=None)

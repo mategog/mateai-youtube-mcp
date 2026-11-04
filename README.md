@@ -104,6 +104,8 @@ Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mat
 | `yt_update_video` | Update title, description, tags, privacy status, schedule time, or thumbnail of an existing video. |
 | `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
 
+**Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
+
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
 
 | Tool | Description |
@@ -159,7 +161,7 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 | **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
 | **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
 | **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
-| Asked to log in again after about a week | Apps in "Testing" mode can have sign-ins that expire after about 7 days. Publishing the app on the Audience page may avoid that. **[unconfirmed]** |
+| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. |
 | Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
 
 Not using Claude Code, or on an older version? Use the wizard below.
@@ -221,7 +223,7 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 - **Switch on the AI-generated label yourself.** If your video uses a synthetic voice or AI visuals, turn on TikTok's AI-generated content toggle in the app before posting. The API cannot set it.
 - **Matching is by title.** The comparison table pairs a Short with a TikTok when the title (hashtags ignored) matches the TikTok title or description. Anything else shows up as its own row, with "—" for the missing platform.
 - **Only official numbers.** TikTok's API gives views, likes, comments and shares. Retention-style metrics exist for YouTube only.
-- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`. Details in [PRIVACY.md](PRIVACY.md).
+- **Your data.** The client file is `tiktok_auth_secret/tiktok_client.json` and the login token is `.tokens/tiktok_token.json`, both owner-only (`0600`) and `.gitignore`d. The cache is `tiktok_snapshot.json`, and every `tiktok_channel_snapshot` call also appends a counts row to `tiktok_history.jsonl` so growth can be measured later. Details in [PRIVACY.md](PRIVACY.md).
 
 | Problem | Fix |
 | --- | --- |

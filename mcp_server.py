@@ -14,6 +14,8 @@ from typing import Any
 
 from tiktok_studio import (
     TIKTOK_CACHE_FILE,
+    TIKTOK_HISTORY_FILE,
+    append_tiktok_history,
     build_cross_platform_table,
     fetch_tiktok_snapshot,
     upload_tiktok_inbox_draft,
@@ -222,6 +224,11 @@ TOOLS = [
                     "default": False,
                     "description": "If true and pinned_comment is non-empty, immediately posts pinned_comment as a top-level comment (requires video to allow comments).",
                 },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, upload nothing and sign in to nothing: validate the inputs and return exactly what would be sent (title, description, schedule in local time, thumbnail check, warnings). Use it to preview before the real call.",
+                },
             },
             "required": ["video_path"],
             "additionalProperties": False,
@@ -281,6 +288,11 @@ TOOLS = [
                     "type": "string",
                     "description": "Optional absolute local filesystem path to a readable PNG/JPG image (<=2MB) to upload via thumbnails.set.",
                 },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, change nothing: return only the fields that would be updated, with the schedule in local time and any warnings.",
+                },
             },
             "required": ["video_id"],
             "additionalProperties": False,
@@ -322,6 +334,11 @@ TOOLS = [
                     "minLength": 1,
                     "maxLength": 10000,
                     "description": "Plain-text comment body (1–10,000 characters) to publish publicly on the video.",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, post nothing and return the comment text that would be published.",
                 },
             },
             "required": ["video_id", "text"],
@@ -445,6 +462,7 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "tiktok_channel_snapshot":
         snap = fetch_tiktok_snapshot()
         TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+        append_tiktok_history(snap, history_file=TIKTOK_HISTORY_FILE)
         return {"content": [{"type": "text", "text": json.dumps(snap, indent=2)}]}
 
     if name == "tiktok_upload_draft":
@@ -509,6 +527,7 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             privacy_status=args.get("privacy_status", "private"),
             publish_at=args.get("publish_at"),
             auto_post_comment=bool(args.get("auto_post_comment", False)),
+            dry_run=bool(args.get("dry_run", False)),
         )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
@@ -521,11 +540,14 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
             privacy_status=args.get("privacy_status"),
             publish_at=args.get("publish_at"),
             thumbnail_path=Path(args["thumbnail_path"]) if args.get("thumbnail_path") else None,
+            dry_run=bool(args.get("dry_run", False)),
         )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     if name == "yt_post_comment":
-        res = post_video_comment(video_id=args["video_id"], text=args["text"])
+        res = post_video_comment(
+            video_id=args["video_id"], text=args["text"], dry_run=bool(args.get("dry_run", False))
+        )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     raise ValueError(f"Unknown tool: {name}")

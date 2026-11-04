@@ -260,6 +260,7 @@ def get_oauth_credentials(
 ):
     """Load cached OAuth2 token or launch local browser flow if client_secret.json exists."""
     try:
+        from google.auth.exceptions import RefreshError
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -277,7 +278,15 @@ def get_oauth_credentials(
 
     if not creds or not creds.valid:
         if not force_reauth and creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError as exc:
+                raise RuntimeError(
+                    "Your YouTube login expired or was revoked, so Google refused to renew it. "
+                    "Sign in again: type /yt-setup in Claude Code, or run "
+                    "`python3 yt_studio.py setup`. (Google ends logins after 7 days for apps in "
+                    f"'Testing' mode.)\nDetails: {exc}"
+                ) from exc
         else:
             if not client_secret_path.exists():
                 raise FileNotFoundError(
@@ -462,6 +471,22 @@ def parse_upload_markdown(md_path: Path) -> dict[str, Any]:
     }
 
 
+def _describe_publish_at(publish_at: str | None) -> tuple[str | None, list[str]]:
+    """Return (local-time text, warnings) for an ISO 8601 `publish_at`, for dry runs."""
+    if not publish_at:
+        return None, []
+    try:
+        when = dt.datetime.fromisoformat(publish_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None, [f"publish_at {publish_at!r} is not ISO 8601 (e.g. 2026-11-05T20:00:00+01:00)."]
+    if when.tzinfo is None:
+        return None, ["publish_at has no timezone offset (add e.g. +01:00 or Z); YouTube may reject it."]
+    warnings = []
+    if when <= dt.datetime.now(dt.timezone.utc):
+        warnings.append("publish_at is in the past; YouTube will reject it or publish right away.")
+    return when.astimezone().strftime("%a %Y-%m-%d %H:%M %Z"), warnings
+
+
 def upload_private_draft(
     video_path: Path,
     spec_path: Path | None = None,
@@ -479,11 +504,12 @@ def upload_private_draft(
     publish_at: str | None = None,
     auto_post_comment: bool = False,
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Upload a video + full YouTube Studio setup (title, description, hashtags, tags, language, synthetic flag, thumbnail, schedule)."""
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaFileUpload
+    """Upload a video + full YouTube Studio setup (title, description, hashtags, tags, language, synthetic flag, thumbnail, schedule).
 
+    With `dry_run=True`, validate the inputs and return what would be sent, without signing in or uploading.
+    """
     if not video_path.exists():
         raise FileNotFoundError(f"Video file not found: {video_path}")
 
@@ -506,6 +532,33 @@ def upload_private_draft(
 
     final_tags = tags if tags is not None else meta["tags"]
     final_comment = pinned_comment if pinned_comment is not None else meta["pinnedComment"]
+
+    if dry_run:
+        publish_local, warnings = _describe_publish_at(publish_at)
+        return {
+            "dryRun": True,
+            "message": "Nothing was uploaded.",
+            "videoPath": str(video_path),
+            "videoSizeMB": round(video_path.stat().st_size / 1_000_000, 1),
+            "title": final_title,
+            "description": final_desc,
+            "tags": final_tags,
+            "privacyStatus": "private" if publish_at else privacy_status,
+            "scheduledPublishAt": publish_at,
+            "scheduledPublishAtLocal": publish_local,
+            "language": language,
+            "categoryId": category_id,
+            "madeForKids": made_for_kids,
+            "containsSyntheticMedia": contains_synthetic_media,
+            "thumbnailPath": str(thumbnail_path) if thumbnail_path else None,
+            "thumbnailFound": bool(thumbnail_path and thumbnail_path.exists()),
+            "pinnedCommentText": final_comment,
+            "willPostComment": bool(auto_post_comment and final_comment),
+            "warnings": warnings,
+        }
+
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
 
     creds = get_oauth_credentials(client_secret_path, upload_scope=True)
     yt = build("youtube", "v3", credentials=creds)
@@ -583,8 +636,35 @@ def update_video_metadata(
     publish_at: str | None = None,
     thumbnail_path: Path | None = None,
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Update title, description, tags, privacy, schedule time, or thumbnail of an existing video."""
+    """Update title, description, tags, privacy, schedule time, or thumbnail of an existing video.
+
+    With `dry_run=True`, return the changes that would be applied, without signing in or changing anything.
+    """
+    if dry_run:
+        publish_local, warnings = _describe_publish_at(publish_at)
+        changes = {
+            key: value
+            for key, value in (("title", title), ("description", description), ("tags", tags),
+                               ("privacyStatus", privacy_status))
+            if value is not None
+        }
+        if publish_at is not None:
+            changes["privacyStatus"] = "private"
+            changes["publishAt"] = publish_at
+        if thumbnail_path:
+            changes["thumbnailPath"] = str(thumbnail_path)
+        return {
+            "dryRun": True,
+            "message": "Nothing was changed.",
+            "videoId": video_id,
+            "wouldChange": changes,
+            "scheduledPublishAtLocal": publish_local,
+            "thumbnailFound": bool(thumbnail_path and thumbnail_path.exists()),
+            "warnings": warnings,
+        }
+
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
@@ -638,8 +718,12 @@ def post_video_comment(
     video_id: str,
     text: str,
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Post a top-level comment on a video (ready to be pinned in Studio)."""
+    """Post a top-level comment on a video (ready to be pinned in Studio). `dry_run=True` posts nothing."""
+    if dry_run:
+        return {"dryRun": True, "message": "Nothing was posted.", "videoId": video_id, "text": text}
+
     from googleapiclient.discovery import build
 
     creds = get_oauth_credentials(client_secret_path, upload_scope=True)

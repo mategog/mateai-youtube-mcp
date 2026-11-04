@@ -11,6 +11,26 @@ Third-Party Open-Source Strategy Skills Included (MIT License):
 - claude-youtube by Daniel Agrici (@AgriciDaniel)
   https://github.com/AgriciDaniel/claude-youtube
 
+Reference Projects Studied for the tiktok-studio Skill (MIT License, 2026-11-03).
+No source code was copied; the patterns and cautions below were read and then
+rewritten in this project's own words. Credit is given anyway:
+- IvanBBaev/tiktok-mcp by Ivan Baev - plan-then-execute writes, append-only
+  publish journal, local publish rate limiting, guided-flow prompts.
+  https://github.com/IvanBBaev/tiktok-mcp
+- thenavidm/tiktok-mcp-cli by Navid Moazzez - median/p90 summaries, scan-window
+  ranking, "own account only" and untrusted-caption guidance, seconds-vs-
+  milliseconds and cover-expiry cautions.
+  https://github.com/thenavidm/tiktok-mcp-cli
+- aaronckj/tiktok-studio-mcp by aaronckj - dry-run preview, health check backed
+  by the basic profile endpoint, creator_info scope trap, refresh-token rotation
+  write-back, documented rate limits.
+  https://github.com/aaronckj/tiktok-studio-mcp
+- kostja94/marketing-skills (tiktok-captions) by kostja94 - caption structure
+  (hook, context, hashtags). Its engagement statistics are unsourced and were
+  not carried over. https://github.com/kostja94/marketing-skills
+If code from any of these is reused later, keep its MIT copyright and permission
+notice alongside that code.
+
 Under Section 4(d) of the Apache License 2.0 and the Commons Clause,
 any redistribution or derivative work of this software must retain this
 attribution notice and may not be sold or offered as a paid hosted service.

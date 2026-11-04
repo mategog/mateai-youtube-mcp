@@ -510,6 +510,63 @@ def _describe_publish_at(publish_at: str | None) -> tuple[str | None, list[str]]
     return when.astimezone().strftime("%a %Y-%m-%d %H:%M %Z"), warnings
 
 
+def _build_upload_body(
+    title: str,
+    description: str,
+    tags: list[str],
+    category_id: str,
+    language: str,
+    made_for_kids: bool,
+    contains_synthetic_media: bool,
+    privacy_status: str,
+    publish_at: str | None,
+) -> dict[str, Any]:
+    """The `videos.insert` body. Pure: shared by the dry run and the real upload. A schedule forces private."""
+    status: dict[str, Any] = {
+        "privacyStatus": "private" if publish_at else privacy_status,
+        "selfDeclaredMadeForKids": made_for_kids,
+        "containsSyntheticMedia": contains_synthetic_media,
+    }
+    if publish_at:
+        status["publishAt"] = publish_at
+    return {
+        "snippet": {
+            "title": title,
+            "description": description,
+            "tags": tags,
+            "categoryId": category_id,  # 28 = Science & Technology
+            "defaultLanguage": language,
+            "defaultAudioLanguage": language,
+        },
+        "status": status,
+    }
+
+
+def _build_update_changes(
+    title: str | None,
+    description: str | None,
+    tags: list[str] | None,
+    privacy_status: str | None,
+    publish_at: str | None,
+    contains_synthetic_media: bool | None,
+) -> dict[str, dict[str, Any]]:
+    """Only the `snippet`/`status` fields an update changes (a part is absent if untouched). Pure: shared by dry run and real update."""
+    snippet = {
+        key: value
+        for key, value in (("title", title), ("description", description), ("tags", tags))
+        if value is not None
+    }
+    status: dict[str, Any] = {}
+    if privacy_status is not None:
+        status["privacyStatus"] = privacy_status
+    if publish_at is not None:
+        status["privacyStatus"] = "private"
+        status["publishAt"] = publish_at
+    if contains_synthetic_media is not None:
+        status["containsSyntheticMedia"] = contains_synthetic_media
+    return {name: fields for name, fields in (("snippet", snippet), ("status", status)) if fields}
+
+
 def upload_private_draft(
     video_path: Path,
     spec_path: Path | None = None,
@@ -556,6 +613,11 @@ def upload_private_draft(
     final_tags = tags if tags is not None else meta["tags"]
     final_comment = pinned_comment if pinned_comment is not None else meta["pinnedComment"]
 
+    body = _build_upload_body(
+        final_title, final_desc, final_tags, category_id, language,
+        made_for_kids, contains_synthetic_media, privacy_status, publish_at,
+    )
+
     if dry_run:
         publish_local, warnings = _describe_publish_at(publish_at)
         return {
@@ -563,16 +625,16 @@ def upload_private_draft(
             "message": "Nothing was uploaded.",
             "videoPath": str(video_path),
             "videoSizeMB": round(video_path.stat().st_size / 1_000_000, 1),
-            "title": final_title,
-            "description": final_desc,
-            "tags": final_tags,
-            "privacyStatus": "private" if publish_at else privacy_status,
+            "title": body["snippet"]["title"],
+            "description": body["snippet"]["description"],
+            "tags": body["snippet"]["tags"],
+            "privacyStatus": body["status"]["privacyStatus"],
             "scheduledPublishAt": publish_at,
             "scheduledPublishAtLocal": publish_local,
-            "language": language,
-            "categoryId": category_id,
-            "madeForKids": made_for_kids,
-            "containsSyntheticMedia": contains_synthetic_media,
+            "language": body["snippet"]["defaultLanguage"],
+            "categoryId": body["snippet"]["categoryId"],
+            "madeForKids": body["status"]["selfDeclaredMadeForKids"],
+            "containsSyntheticMedia": body["status"]["containsSyntheticMedia"],
             "thumbnailPath": str(thumbnail_path) if thumbnail_path else None,
             "thumbnailFound": bool(thumbnail_path and thumbnail_path.exists()),
             "pinnedCommentText": final_comment,
@@ -585,26 +647,6 @@ def upload_private_draft(
 
     creds = get_oauth_credentials(client_secret_path, upload_scope=True)
     yt = build("youtube", "v3", credentials=creds)
-
-    status_body: dict[str, Any] = {
-        "privacyStatus": "private" if publish_at else privacy_status,
-        "selfDeclaredMadeForKids": made_for_kids,
-        "containsSyntheticMedia": contains_synthetic_media,
-    }
-    if publish_at:
-        status_body["publishAt"] = publish_at
-
-    body = {
-        "snippet": {
-            "title": final_title,
-            "description": final_desc,
-            "tags": final_tags,
-            "categoryId": category_id,  # 28 = Science & Technology
-            "defaultLanguage": language,
-            "defaultAudioLanguage": language,
-        },
-        "status": status_body,
-    }
 
     media = MediaFileUpload(str(video_path), chunksize=1024 * 1024 * 8, resumable=True)
     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
@@ -635,7 +677,7 @@ def upload_private_draft(
     return {
         "videoId": video_id,
         "title": final_title,
-        "privacyStatus": status_body["privacyStatus"],
+        "privacyStatus": body["status"]["privacyStatus"],
         "scheduledPublishAt": publish_at,
         "language": language,
         "categoryId": category_id,
@@ -669,26 +711,19 @@ def update_video_metadata(
 
     With `dry_run=True`, return the changes that would be applied, without signing in or changing anything.
     """
+    changes = _build_update_changes(
+        title, description, tags, privacy_status, publish_at, contains_synthetic_media)
+
     if dry_run:
         publish_local, warnings = _describe_publish_at(publish_at)
-        changes = {
-            key: value
-            for key, value in (("title", title), ("description", description), ("tags", tags),
-                               ("privacyStatus", privacy_status))
-            if value is not None
-        }
-        if publish_at is not None:
-            changes["privacyStatus"] = "private"
-            changes["publishAt"] = publish_at
-        if contains_synthetic_media is not None:
-            changes["containsSyntheticMedia"] = contains_synthetic_media
+        would_change = {**changes.get("snippet", {}), **changes.get("status", {})}
         if thumbnail_path:
-            changes["thumbnailPath"] = str(thumbnail_path)
+            would_change["thumbnailPath"] = str(thumbnail_path)
         return {
             "dryRun": True,
             "message": "Nothing was changed.",
             "videoId": video_id,
-            "wouldChange": changes,
+            "wouldChange": would_change,
             "scheduledPublishAtLocal": publish_local,
             "thumbnailFound": bool(thumbnail_path and thumbnail_path.exists()),
             "warnings": warnings,
@@ -708,29 +743,14 @@ def update_video_metadata(
     snippet = item["snippet"]
     status = item["status"]
 
-    snippet_changed = any(v is not None for v in (title, description, tags))
-    status_changed = any(v is not None for v in (privacy_status, publish_at, contains_synthetic_media))
-
-    if title is not None:
-        snippet["title"] = title
-    if description is not None:
-        snippet["description"] = description
-    if tags is not None:
-        snippet["tags"] = tags
-    if privacy_status is not None:
-        status["privacyStatus"] = privacy_status
-    if publish_at is not None:
-        status["privacyStatus"] = "private"
-        status["publishAt"] = publish_at
-    if contains_synthetic_media is not None:
-        status["containsSyntheticMedia"] = contains_synthetic_media
-
-    parts = [name for name, changed in (("snippet", snippet_changed), ("status", status_changed)) if changed]
     body: dict[str, Any] = {"id": video_id}
-    if snippet_changed:
+    if "snippet" in changes:
+        snippet.update(changes["snippet"])
         body["snippet"] = snippet
-    if status_changed:
+    if "status" in changes:
+        status.update(changes["status"])
         body["status"] = status
+    parts = [name for name in ("snippet", "status") if name in body]
 
     # Nothing to change (e.g. thumbnail only): skip videos.update so no part is re-sent.
     updated = (

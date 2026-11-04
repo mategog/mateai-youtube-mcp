@@ -914,7 +914,7 @@ def main() -> None:
             _reply(msg_id, {})
         elif method == "tools/list":
             _reply(msg_id, {"tools": listed_tools()})
-        elif method in _EMPTY_LISTS:
+        elif isinstance(method, str) and method in _EMPTY_LISTS:
             _reply(msg_id, _EMPTY_LISTS[method])
         elif method == "tools/call":
             params = msg.get("params", {})

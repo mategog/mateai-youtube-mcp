@@ -112,7 +112,7 @@ def _extract_yt_initial_data(page_html: str) -> dict[str, Any]:
         return {}
     try:
         return json.loads(m.group(1))
-    except Exception:
+    except ValueError:
         return {}
 
 
@@ -188,7 +188,7 @@ def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any
     avatar_url = avatar_m.group(1) if avatar_m else ""
 
     subs_m = re.search(r'"subscriberCountText":\{"simpleText":"([^"]+)"\}', videos_html)
-    subs_text = subs_m.group(1) if subs_m else "10 subscribers"
+    subs_text = subs_m.group(1) if subs_m else None  # unknown: never invent a count
 
     # Extract video IDs in order of appearance
     long_ids: list[str] = []
@@ -362,36 +362,31 @@ def fetch_studio_channel_snapshot(
     end_date = dt.date.today().isoformat()
     start_date = (dt.date.today() - dt.timedelta(days=days)).isoformat()
 
-    analytics_by_vid: dict[str, dict[str, Any]] = {}
+    def _query_by_video(metrics: str) -> dict[str, Any]:
+        return yta.reports().query(
+            ids="channel==MINE",
+            startDate=start_date,
+            endDate=end_date,
+            metrics=metrics,
+            dimensions="video",
+            maxResults=50,
+            sort="-views",
+        ).execute()
+
+    base_metrics = "views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,subscribersGained"
     try:
-        rep = yta.reports().query(
-            ids="channel==MINE",
-            startDate=start_date,
-            endDate=end_date,
-            metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,subscribersGained",
-            dimensions="video",
-            maxResults=50,
-            sort="-views",
-        ).execute()
-        headers = [h["name"] for h in rep.get("columnHeaders", [])]
-        for row in rep.get("rows", []):
-            row_dict = dict(zip(headers, row))
-            analytics_by_vid[row_dict["video"]] = row_dict
-    except Exception:
-        # Fallback if engagedViews metric isn't supported for a specific date window
-        rep = yta.reports().query(
-            ids="channel==MINE",
-            startDate=start_date,
-            endDate=end_date,
-            metrics="views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,subscribersGained",
-            dimensions="video",
-            maxResults=50,
-            sort="-views",
-        ).execute()
-        headers = [h["name"] for h in rep.get("columnHeaders", [])]
-        for row in rep.get("rows", []):
-            row_dict = dict(zip(headers, row))
-            analytics_by_vid[row_dict["video"]] = row_dict
+        rep = _query_by_video(base_metrics.replace("views,", "views,engagedViews,", 1))
+    except Exception as exc:
+        # Only "this metric isn't supported for the window" (HTTP 400) is worth a retry without
+        # engagedViews. Auth, quota and network errors must surface, not turn into empty analytics.
+        if _http_status(exc) != 400:
+            raise
+        rep = _query_by_video(base_metrics)
+    headers = [h["name"] for h in rep.get("columnHeaders", [])]
+    analytics_by_vid: dict[str, dict[str, Any]] = {}
+    for row in rep.get("rows", []):
+        row_dict = dict(zip(headers, row))
+        analytics_by_vid[row_dict["video"]] = row_dict
 
     items: list[dict[str, Any]] = []
     for v in v_resp.get("items", []):
@@ -438,7 +433,7 @@ def fetch_studio_channel_snapshot(
         "mode": "studio_oauth",
         "channel": {
             "handle": snippet.get("customUrl", DEFAULT_HANDLE),
-            "title": snippet.get("title", "MateAI"),
+            "title": snippet.get("title", ""),
             "description": snippet.get("description", ""),
             "subscribersText": f"{stats.get('subscriberCount', '0')} subscribers",
             "avatarUrl": snippet.get("thumbnails", {}).get("default", {}).get("url", ""),
@@ -464,6 +459,11 @@ def _parse_iso_duration(iso_str: str) -> int:
     mins = int(m.group(2) or 0)
     s = int(m.group(3) or 0)
     return h * 3600 + mins * 60 + s
+
+
+def _http_status(exc: Exception) -> int | None:
+    """HTTP status of a googleapiclient HttpError (duck-typed so tests need no Google libraries)."""
+    return getattr(getattr(exc, "resp", None), "status", None)
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +655,8 @@ def upload_private_draft(
         _, response = req.next_chunk()
 
     video_id = response["id"]
+    # The video is already uploaded, so a failed thumbnail or comment must not raise; but say why.
+    errors: dict[str, str] = {}
     thumb_uploaded = False
     if thumbnail_path and thumbnail_path.exists():
         try:
@@ -663,16 +665,16 @@ def upload_private_draft(
                 media_body=MediaFileUpload(str(thumbnail_path)),
             ).execute()
             thumb_uploaded = True
-        except Exception:
-            thumb_uploaded = False
+        except Exception as exc:
+            errors["thumbnailError"] = str(exc)
 
     comment_id = None
     if auto_post_comment and final_comment:
         try:
             c_res = post_video_comment(video_id, final_comment, client_secret_path=client_secret_path)
             comment_id = c_res.get("commentId")
-        except Exception:
-            comment_id = None
+        except Exception as exc:
+            errors["commentError"] = str(exc)
 
     return {
         "videoId": video_id,
@@ -689,6 +691,7 @@ def upload_private_draft(
         "thumbnailUploaded": thumb_uploaded,
         "commentPostedId": comment_id,
         "pinnedCommentText": final_comment,
+        **errors,
     }
 
 
@@ -958,6 +961,9 @@ def fetch_video_retention_diagnosis(
     end_date = dt.date.today().isoformat()
     start_date = (dt.date.today() - dt.timedelta(days=days)).isoformat()
 
+    # A failed call is reported in `errors`, so "Google refused" never looks like "no data".
+    errors: list[str] = []
+
     # 1. Traffic sources for this video
     traffic_sources: list[dict[str, Any]] = []
     try:
@@ -976,8 +982,8 @@ def fetch_video_retention_diagnosis(
                 "views": int(r[1]),
                 "watchTimeMin": round(float(r[2]), 1),
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.append(f"trafficSources: {exc}")
 
     # 2. 100-point Audience Retention curve
     curve_rows: list[list[float]] = []
@@ -991,8 +997,8 @@ def fetch_video_retention_diagnosis(
             filters=f"video=={video_id}",
         ).execute()
         curve_rows = rc_rep.get("rows", [])
-    except Exception:
-        curve_rows = []
+    except Exception as exc:
+        errors.append(f"retentionCurve: {exc}")
 
     # Optional: load word timings from words.js / json if provided
     timed_words: list[dict[str, Any]] = []
@@ -1002,8 +1008,8 @@ def fetch_video_retention_diagnosis(
         if m:
             try:
                 timed_words = json.loads(m.group(0))
-            except Exception:
-                timed_words = []
+            except ValueError as exc:
+                errors.append(f"wordTimings: could not parse {words_or_script_path.name}: {exc}")
 
     def _spoken_around(sec: float, window: float = 5.0) -> str:
         if not timed_words:
@@ -1058,6 +1064,7 @@ def fetch_video_retention_diagnosis(
         "retentionCheckpoints": checkpoints,
         "steepestDropOffCliffs": steepest_drops,
         "hasRetentionCurve": bool(curve_rows),
+        **({"errors": errors} if errors else {}),
     }
 
 
@@ -1065,12 +1072,25 @@ def fetch_video_retention_diagnosis(
 # Shorts Experiment Markdown Table Generator
 # ---------------------------------------------------------------------------
 
+def _load_shorts_styles() -> dict[str, str]:
+    """Optional `shorts_styles.json` in the state folder: {"<videoId>": "C (Poster)"}. No file means style unknown."""
+    path = STATE_DIR / "shorts_styles.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
+    return {str(k): str(v) for k, v in data.items()}
+
+
 def build_shorts_experiment_markdown(snapshot: dict[str, Any]) -> str:
     """Format the Shorts performance table matching pipeline/explainer-short/README.md."""
     lines = [
         "| Video | Style | Published | Views | Viewed vs swiped | Avg % viewed | Engaged views | Subs gained |",
         "|---|---|---|---:|---:|---:|---:|---:|",
     ]
+    styles = _load_shorts_styles()
     shorts = [v for v in snapshot.get("videos", []) if v.get("format") == "short"]
     for s in shorts:
         title = s.get("title", s["videoId"])
@@ -1080,7 +1100,7 @@ def build_shorts_experiment_markdown(snapshot: dict[str, Any]) -> str:
         avp = f"{s['avgViewPct']:.1f}%" if s.get("avgViewPct") is not None else "*(Studio OAuth)*"
         eng = f"{s['engagedViews']:,}" if s.get("engagedViews") is not None else "*(Studio OAuth)*"
         subs = f"+{s['subsGained']}" if s.get("subsGained") is not None else "*(Studio OAuth)*"
-        style = "C (Poster)" if "Carbon" in title or "Knocked" in title or "Acted" in title else "Grid"
+        style = styles.get(s["videoId"], "—")
         lines.append(f"| [{title}]({s['url']}) | {style} | {pub} | {views} | {vvs} | {avp} | {eng} | {subs} |")
     return "\n".join(lines)
 
@@ -1117,7 +1137,7 @@ def get_best_snapshot(handle: str = DEFAULT_HANDLE, force_public: bool = False) 
 def print_cli_summary(snap: dict[str, Any]) -> None:
     ch = snap["channel"]
     tot = snap["totals"]
-    print(f"Channel: {ch['title']} ({ch['handle']})  |  {ch['subscribersText']}  |  Mode: {snap['mode']}")
+    print(f"Channel: {ch['title']} ({ch['handle']})  |  {ch['subscribersText'] or '—'}  |  Mode: {snap['mode']}")
     print(f"Videos:  {tot['videoCount']} ({tot['shortsCount']} Shorts, {tot['longCount']} Long-form)  |  Total Views: {tot['totalViews']:,}")
     print("-" * 92)
     print(f"{'FMT':<6} {'PUBLISHED':<11} {'VIEWS':>7} {'LIKES':>6} {'AVG %':>7} {'SWIPE%':>7}  {'TITLE'}")

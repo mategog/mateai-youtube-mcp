@@ -6,14 +6,13 @@ Licensed under Apache 2.0 with Commons Clause Restriction v1.0 (Free to use, no 
 
 from __future__ import annotations
 
-import datetime as dt
 import html as html_lib
 import json
 import re
 from typing import Any
 
 import yt_common
-from yt_common import AUTHOR_ATTRIBUTION, DEFAULT_HANDLE
+from yt_common import DEFAULT_HANDLE
 
 
 def _extract_yt_initial_data(page_html: str) -> dict[str, Any]:
@@ -132,14 +131,9 @@ def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any
 
     items.sort(key=lambda x: (x.get("publishDate") or "", x.get("views") or 0), reverse=True)
 
-    total_views = sum(v.get("views", 0) or 0 for v in items)
-    shorts_list = [v for v in items if v["format"] == "short"]
-    long_list = [v for v in items if v["format"] == "long"]
-
-    snapshot = {
-        "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "mode": "public",
-        "channel": {
+    return yt_common.snapshot_envelope(
+        "public",
+        {
             "handle": clean_handle,
             "title": channel_title,
             "description": channel_desc,
@@ -147,14 +141,6 @@ def fetch_public_channel_snapshot(handle: str = DEFAULT_HANDLE) -> dict[str, Any
             "avatarUrl": avatar_url,
             "url": base_url,
         },
-        "totals": {
-            "videoCount": len(items),
-            "shortsCount": len(shorts_list),
-            "longCount": len(long_list),
-            "totalViews": total_views,
-            "topVideo": max(items, key=lambda x: x.get("views", 0)) if items else None,
-        },
-        "videos": items,
-        "attribution": AUTHOR_ATTRIBUTION,
-    }
-    return snapshot
+        items,
+        youtube_counts=True,
+    )

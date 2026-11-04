@@ -22,8 +22,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+import yt_common
 from yt_studio import (
-    AUTHOR_ATTRIBUTION,
     DEFAULT_HANDLE,
     SSL_CONTEXT,
     STATE_DIR,
@@ -442,11 +442,9 @@ def fetch_tiktok_snapshot(
             }
         )
 
-    total_views = sum(v["views"] for v in items)
-    return {
-        "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "mode": "tiktok_oauth",
-        "channel": {
+    return yt_common.snapshot_envelope(
+        "tiktok_oauth",
+        {
             "handle": handle,
             "title": display_name or handle,
             "followers": int(u.get("follower_count") or 0),
@@ -455,14 +453,9 @@ def fetch_tiktok_snapshot(
             "avatarUrl": u.get("avatar_url") or "",
             "url": channel_url,
         },
-        "totals": {
-            "videoCount": len(items),
-            "totalViews": total_views,
-            "topVideo": max(items, key=lambda x: x.get("views", 0)) if items else None,
-        },
-        "videos": items,
-        "attribution": AUTHOR_ATTRIBUTION,
-    }
+        items,
+        youtube_counts=False,
+    )
 
 
 def append_tiktok_history(snapshot: dict[str, Any], history_file: Path = TIKTOK_HISTORY_FILE) -> bool:
@@ -664,7 +657,7 @@ def main() -> None:
         return
 
     snap = fetch_tiktok_snapshot()
-    TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    yt_common.write_snapshot_cache(snap, TIKTOK_CACHE_FILE)
     print(json.dumps(snap, indent=2))
 
 

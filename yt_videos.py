@@ -191,11 +191,9 @@ def upload_private_draft(
             "warnings": warnings,
         }
 
-    from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
-    creds = yt_auth.get_oauth_credentials(client_secret_path, upload_scope=True)
-    yt = build("youtube", "v3", credentials=creds)
+    yt = yt_auth._youtube_client(client_secret_path)
 
     media = MediaFileUpload(str(video_path), chunksize=1024 * 1024 * 8, resumable=True)
     req = yt.videos().insert(part="snippet,status", body=body, media_body=media)
@@ -281,11 +279,9 @@ def update_video_metadata(
             "warnings": warnings,
         }
 
-    from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
-    creds = yt_auth.get_oauth_credentials(client_secret_path, upload_scope=True)
-    yt = build("youtube", "v3", credentials=creds)
+    yt = yt_auth._youtube_client(client_secret_path)
 
     existing = yt.videos().list(part="snippet,status", id=video_id).execute()
     if not existing.get("items"):
@@ -338,10 +334,7 @@ def post_video_comment(
     if dry_run:
         return {"dryRun": True, "message": "Nothing was posted.", "videoId": video_id, "text": text}
 
-    from googleapiclient.discovery import build
-
-    creds = yt_auth.get_oauth_credentials(client_secret_path, upload_scope=True)
-    yt = build("youtube", "v3", credentials=creds)
+    yt = yt_auth._youtube_client(client_secret_path)
     resp = yt.commentThreads().insert(
         part="snippet",
         body={

@@ -117,8 +117,16 @@ def get_oauth_credentials(
     return creds
 
 
-def _youtube_client(client_secret_path: Path = DEFAULT_CLIENT_SECRET):
+def _youtube_client(client_secret_path: Path = DEFAULT_CLIENT_SECRET, upload_scope: bool = True):
     from googleapiclient.discovery import build
 
-    creds = get_oauth_credentials(client_secret_path, upload_scope=True)
+    creds = get_oauth_credentials(client_secret_path, upload_scope=upload_scope)
     return build("youtube", "v3", credentials=creds)
+
+
+def _youtube_and_analytics_clients(client_secret_path: Path = DEFAULT_CLIENT_SECRET):
+    """YouTube Data v3 + YouTube Analytics v2 clients on one read-only credential."""
+    from googleapiclient.discovery import build
+
+    creds = get_oauth_credentials(client_secret_path, upload_scope=False)
+    return build("youtube", "v3", credentials=creds), build("youtubeAnalytics", "v2", credentials=creds)

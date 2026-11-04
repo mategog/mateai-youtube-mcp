@@ -17,7 +17,7 @@ import yt_auth
 import yt_common
 import yt_public
 from yt_auth import DEFAULT_CLIENT_SECRET
-from yt_common import AUTHOR_ATTRIBUTION, DEFAULT_HANDLE, _parse_iso_duration
+from yt_common import DEFAULT_HANDLE, _parse_iso_duration
 
 
 # Public page scraping is opt-in: the default path is the official YouTube APIs via OAuth.
@@ -41,11 +41,7 @@ def fetch_studio_channel_snapshot(
     days: int = 90,
 ) -> dict[str, Any]:
     """Fetch full private Studio metrics via YouTube Data API v3 + YouTube Analytics API v2."""
-    from googleapiclient.discovery import build
-
-    creds = yt_auth.get_oauth_credentials(client_secret_path, upload_scope=False)
-    yt = build("youtube", "v3", credentials=creds)
-    yta = build("youtubeAnalytics", "v2", credentials=creds)
+    yt, yta = yt_auth._youtube_and_analytics_clients(client_secret_path)
 
     ch_resp = yt.channels().list(part="snippet,statistics,contentDetails", mine=True).execute()
     if not ch_resp.get("items"):
@@ -134,13 +130,9 @@ def fetch_studio_channel_snapshot(
         })
 
     items.sort(key=lambda x: x.get("publishDate") or "", reverse=True)
-    shorts_list = [v for v in items if v["format"] == "short"]
-    long_list = [v for v in items if v["format"] == "long"]
-
-    return {
-        "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "mode": "studio_oauth",
-        "channel": {
+    return yt_common.snapshot_envelope(
+        "studio_oauth",
+        {
             "handle": snippet.get("customUrl", DEFAULT_HANDLE),
             "title": snippet.get("title", ""),
             "description": snippet.get("description", ""),
@@ -148,16 +140,9 @@ def fetch_studio_channel_snapshot(
             "avatarUrl": snippet.get("thumbnails", {}).get("default", {}).get("url", ""),
             "url": f"https://www.youtube.com/{snippet.get('customUrl', DEFAULT_HANDLE)}",
         },
-        "totals": {
-            "videoCount": len(items),
-            "shortsCount": len(shorts_list),
-            "longCount": len(long_list),
-            "totalViews": sum(v.get("views", 0) or 0 for v in items),
-            "topVideo": max(items, key=lambda x: x.get("views", 0)) if items else None,
-        },
-        "videos": items,
-        "attribution": AUTHOR_ATTRIBUTION,
-    }
+        items,
+        youtube_counts=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +198,7 @@ def get_best_snapshot(handle: str = DEFAULT_HANDLE, force_public: bool = False) 
     if not force_public and (yt_auth.TOKEN_FILE.exists() or DEFAULT_CLIENT_SECRET.exists()):
         try:
             snap = fetch_studio_channel_snapshot()
-            yt_common.CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+            yt_common.write_snapshot_cache(snap, yt_common.CACHE_FILE)
             return snap
         except Exception as exc:
             if not allow_scrape:
@@ -223,7 +208,7 @@ def get_best_snapshot(handle: str = DEFAULT_HANDLE, force_public: bool = False) 
     if not allow_scrape:
         raise RuntimeError(SCRAPE_DISABLED_MSG)
     snap = yt_public.fetch_public_channel_snapshot(handle=handle)
-    yt_common.CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    yt_common.write_snapshot_cache(snap, yt_common.CACHE_FILE)
     return snap
 
 

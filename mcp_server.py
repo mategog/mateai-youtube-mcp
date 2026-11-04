@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+import yt_common
 from tiktok_studio import (
     TIKTOK_CACHE_FILE,
     TIKTOK_HISTORY_FILE,
@@ -709,7 +710,7 @@ def _do_yt_set_safety_settings(args: dict[str, Any]) -> dict[str, Any]:
 )
 def _do_tiktok_channel_snapshot(args: dict[str, Any]) -> dict[str, Any]:
     snap = fetch_tiktok_snapshot()
-    TIKTOK_CACHE_FILE.write_text(json.dumps(snap, indent=2), encoding="utf-8")
+    yt_common.write_snapshot_cache(snap, TIKTOK_CACHE_FILE)
     append_tiktok_history(snap, history_file=TIKTOK_HISTORY_FILE)
     return _json_result(snap)
 

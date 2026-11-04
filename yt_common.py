@@ -6,6 +6,8 @@ Licensed under Apache 2.0 with Commons Clause Restriction v1.0 (Free to use, no 
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 import os
 import re
 import ssl
@@ -60,3 +62,25 @@ def _parse_iso_duration(iso_str: str) -> int:
     mins = int(m.group(2) or 0)
     s = int(m.group(3) or 0)
     return h * 3600 + mins * 60 + s
+
+
+def snapshot_envelope(mode: str, channel: dict, videos: list[dict], *, youtube_counts: bool) -> dict:
+    """The snapshot shape shared by the public, Studio and TikTok fetchers."""
+    totals = {"videoCount": len(videos)}
+    if youtube_counts:
+        totals["shortsCount"] = sum(1 for v in videos if v["format"] == "short")
+        totals["longCount"] = sum(1 for v in videos if v["format"] == "long")
+    totals["totalViews"] = sum(v.get("views", 0) or 0 for v in videos)
+    totals["topVideo"] = max(videos, key=lambda x: x.get("views", 0)) if videos else None
+    return {
+        "generatedAt": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "mode": mode,
+        "channel": channel,
+        "totals": totals,
+        "videos": videos,
+        "attribution": AUTHOR_ATTRIBUTION,
+    }
+
+
+def write_snapshot_cache(snap: dict, path: Path) -> None:
+    path.write_text(json.dumps(snap, indent=2), encoding="utf-8")

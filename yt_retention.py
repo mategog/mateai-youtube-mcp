@@ -27,11 +27,7 @@ def fetch_video_retention_diagnosis(
     Pull the 100-point audience retention curve (audienceWatchRatio + relativeRetentionPerformance),
     traffic sources, and cross-reference steepest drop-off timestamps against spoken words if available.
     """
-    from googleapiclient.discovery import build
-
-    creds = yt_auth.get_oauth_credentials(client_secret_path, upload_scope=False)
-    yt = build("youtube", "v3", credentials=creds)
-    yta = build("youtubeAnalytics", "v2", credentials=creds)
+    yt, yta = yt_auth._youtube_and_analytics_clients(client_secret_path)
 
     v_resp = yt.videos().list(part="snippet,contentDetails,statistics", id=video_id).execute()
     if not v_resp.get("items"):

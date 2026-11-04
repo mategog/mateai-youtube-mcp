@@ -10,6 +10,12 @@ Third-Party Open-Source Strategy Skills Included (MIT License):
   https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy
 - claude-youtube by Daniel Agrici (@AgriciDaniel)
   https://github.com/AgriciDaniel/claude-youtube
+- youtube-agent-skill by Jake Schincariol (@Jakeschincariol) - the yt-chapters,
+  yt-comment and yt-title-lint skills (yt-title-lint is its yt-package, renamed to
+  avoid clashing with this plugin's yt-packaging; yt-chapters also ships the
+  transcript parser from its yt-edit). Copied with their MIT notice kept in each
+  skill folder.
+  https://github.com/Jakeschincariol/youtube-agent-skill
 
 Reference Projects Studied for the tiktok-studio Skill (MIT License, 2026-11-03).
 No source code was copied; the patterns and cautions below were read and then

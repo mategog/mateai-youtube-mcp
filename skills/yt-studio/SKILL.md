@@ -21,6 +21,7 @@ Whenever planning, scripting, packaging, uploading, or analyzing a YouTube video
 | **4. Production Brief & Script** | `skills/yt-brief/SKILL.md`, `yt-outline/SKILL.md`, `sub-skills/script.md`, `sub-skills/hook.md`, `sub-skills/shorts.md` | — |
 | **5. Packaging, SEO & Thumbnails** | `skills/yt-packaging/SKILL.md`, `sub-skills/seo.md`, `sub-skills/thumbnail.md`, `sub-skills/metadata.md` | `yt_update_video` (for A/B title/thumbnail swaps) |
 | **6. Upload, Full Setup & Schedule** | `skills/yt-studio/SKILL.md` | `yt_upload_draft` + `yt_post_comment` |
+| **7. Chapters, Title Check & Comment Replies** | `skills/yt-chapters/SKILL.md`, `skills/yt-title-lint/SKILL.md`, `skills/yt-comment/SKILL.md` | `yt_update_video` (chapters go in the description), `yt_list_comments`, `yt_reply_comment` |
 
 ## When to Use This Skill
 Use this skill whenever the user asks to:

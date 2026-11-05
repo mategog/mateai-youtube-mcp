@@ -8,8 +8,11 @@ Licensed under Apache 2.0 with Commons Clause Restriction v1.0.
 from __future__ import annotations
 
 import copy
+import datetime as dt
+import hashlib
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -54,6 +57,18 @@ CONFIRMABLE = {
     "yt_reply_comment": "Reply to a comment",
     "tiktok_upload_draft": "Send a video to your TikTok drafts",
 }
+
+# Hard caps on posted comments + replies, backing the Terms' ban on spam-like commenting. Built in on
+# purpose: they are not read from safety.json, so yt_set_safety_settings cannot raise them.
+COMMENT_LOG_FILE = STATE_DIR / "comment_log.json"
+COMMENTS_PER_HOUR = 20
+COMMENTS_PER_DAY = 100
+SAME_TEXT_PER_DAY = 2  # identical text (lowercased, whitespace collapsed), across all videos
+_DAY = 24 * 3600
+COMMENT_LIMITS_TEXT = (
+    f"Built-in limits (not adjustable): at most {COMMENTS_PER_HOUR} comments+replies per rolling hour and "
+    f"{COMMENTS_PER_DAY} per rolling 24 hours, and the same text at most {SAME_TEXT_PER_DAY} times per 24 hours."
+)
 
 
 SERVER_INFO = {
@@ -264,6 +279,8 @@ def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
         diag = fetch_video_retention_diagnosis(video_id, words_or_script_path=words_path)
         details["studioDiagnosis"] = diag
     except Exception as exc:
+        if yt_common.is_quota_error(exc):
+            raise
         details["studioDiagnosisError"] = str(exc)
     return _json_result(details)
 
@@ -351,7 +368,10 @@ def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
     }
 )
 def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
-    return _json_result(upload_private_draft(
+    dry_run = bool(args.get("dry_run", False))
+    auto_comment = bool(args.get("auto_post_comment", False))
+    refusal = check_comment_allowed(None) if auto_comment and not dry_run else None
+    res = upload_private_draft(
         video_path=Path(args["video_path"]),
         spec_path=_opt_path(args, "spec_path"),
         title=args.get("title"),
@@ -366,9 +386,14 @@ def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
         thumbnail_path=_opt_path(args, "thumbnail_path"),
         privacy_status=args.get("privacy_status", "private"),
         publish_at=args.get("publish_at"),
-        auto_post_comment=bool(args.get("auto_post_comment", False)),
-        dry_run=bool(args.get("dry_run", False)),
-    ))
+        auto_post_comment=auto_comment and not refusal,
+        dry_run=dry_run,
+    )
+    if refusal:
+        res["commentError"] = refusal
+    if res.get("commentPostedId"):
+        record_comment(res.get("pinnedCommentText") or "")
+    return _json_result(res)
 
 
 @_tool(
@@ -459,7 +484,8 @@ def _do_yt_update_video(args: dict[str, Any]) -> dict[str, Any]:
             "Post a public top-level comment thread on a YouTube video or Short via YouTube Data API v3 "
             "(commentThreads.insert, costs ~50 daily quota units). Requires OAuth2 with youtube.force-ssl scope. "
             "Non-idempotent: each call publishes a new visible comment immediately under the authenticated channel identity "
-            "and returns {commentId, videoId, text}. Fails if comments are disabled on the target video or the video is private."
+            "and returns {commentId, videoId, text}. Fails if comments are disabled on the target video or the video is private. "
+            + COMMENT_LIMITS_TEXT
         ),
         "inputSchema": {
             "type": "object",
@@ -503,9 +529,9 @@ def _do_yt_update_video(args: dict[str, Any]) -> dict[str, Any]:
     }
 )
 def _do_yt_post_comment(args: dict[str, Any]) -> dict[str, Any]:
-    return _json_result(post_video_comment(
-        video_id=args["video_id"], text=args["text"], dry_run=bool(args.get("dry_run", False))
-    ))
+    if args.get("dry_run"):
+        return _json_result(post_video_comment(video_id=args["video_id"], text=args["text"], dry_run=True))
+    return _guarded_comment(args["text"], lambda: post_video_comment(video_id=args["video_id"], text=args["text"]))
 
 
 @_tool(
@@ -577,7 +603,8 @@ def _do_yt_list_comments(args: dict[str, Any]) -> dict[str, Any]:
         "name": "yt_reply_comment",
         "description": (
             "Publish a public reply to a top-level comment (comments.insert, ~50 quota units) under the authenticated "
-            "channel identity. parent_id must be a top-level commentId from yt_list_comments. Non-idempotent."
+            "channel identity. parent_id must be a top-level commentId from yt_list_comments. Non-idempotent. "
+            + COMMENT_LIMITS_TEXT
         ),
         "inputSchema": {
             "type": "object",
@@ -598,7 +625,7 @@ def _do_yt_list_comments(args: dict[str, Any]) -> dict[str, Any]:
     }
 )
 def _do_yt_reply_comment(args: dict[str, Any]) -> dict[str, Any]:
-    return _json_result(reply_to_comment(parent_id=args["parent_id"], text=args["text"]))
+    return _guarded_comment(args["text"], lambda: reply_to_comment(parent_id=args["parent_id"], text=args["text"]))
 
 
 @_tool(
@@ -842,6 +869,62 @@ def set_safety_settings(confirm: list[str]) -> dict[str, Any]:
     return get_safety_settings()
 
 
+def _comment_log(now: float) -> list[dict[str, Any]]:
+    """Posted comments+replies from the last 24 hours: [{"t": epoch seconds, "h": hash of normalized text}]."""
+    try:
+        entries = json.loads(COMMENT_LOG_FILE.read_text(encoding="utf-8")).get("posted", [])
+        return [e for e in entries if isinstance(e, dict) and isinstance(e.get("t"), (int, float)) and now - e["t"] < _DAY]
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(" ".join(text.lower().split()).encode("utf-8")).hexdigest()
+
+
+def _local_time(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts).astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+def check_comment_allowed(text: str | None, now: float | None = None) -> str | None:
+    """Refusal message if posting now would break a built-in comment limit, else None.
+    `text=None` checks only the rate limits (e.g. an upload's auto-comment, whose text comes from a spec)."""
+    now = time.time() if now is None else now
+    log = _comment_log(now)
+    for limit, window, label in ((COMMENTS_PER_HOUR, 3600, "hour"), (COMMENTS_PER_DAY, _DAY, "24 hours")):
+        recent = sorted(e["t"] for e in log if now - e["t"] < window)
+        if len(recent) >= limit:
+            return (
+                f"COMMENT LIMIT REACHED — nothing was posted. At most {limit} comments and replies per {label} "
+                f"(built-in, not adjustable). Posting is allowed again at {_local_time(recent[-limit] + window)}."
+            )
+    if text is not None:
+        same = sorted(e["t"] for e in log if e.get("h") == _text_hash(text))
+        if len(same) >= SAME_TEXT_PER_DAY:
+            return (
+                f"DUPLICATE COMMENT — nothing was posted. This text was already posted {len(same)} times in the last "
+                f"24 hours (limit {SAME_TEXT_PER_DAY}, across all videos). It can be posted again at "
+                f"{_local_time(same[-SAME_TEXT_PER_DAY] + _DAY)}."
+            )
+    return None
+
+
+def record_comment(text: str, now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    log = _comment_log(now) + [{"t": now, "h": _text_hash(text)}]
+    COMMENT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COMMENT_LOG_FILE.write_text(json.dumps({"posted": log}), encoding="utf-8")
+
+
+def _guarded_comment(text: str, post: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    refusal = check_comment_allowed(text)
+    if refusal:
+        return {"isError": True, "content": [{"type": "text", "text": refusal}]}
+    result = post()
+    record_comment(text)
+    return _json_result(result)
+
+
 def listed_tools() -> list[dict[str, Any]]:
     """TOOLS as advertised to the client: gated tools get a DANGEROUS marker and a user_confirmed flag."""
     gated = confirm_tools()
@@ -878,7 +961,13 @@ def _handle_tool_call(name: str, args: dict[str, Any]) -> dict[str, Any]:
     handler = _HANDLERS.get(name)
     if handler is None:
         raise ValueError(f"Unknown tool: {name}")
-    return handler(args)
+    try:
+        return handler(args)
+    except Exception as exc:
+        # Out of the shared daily quota: stop with a clear message. Never retry, loop or switch credentials.
+        if yt_common.is_quota_error(exc):
+            return {"isError": True, "content": [{"type": "text", "text": yt_common.QUOTA_EXCEEDED_MSG}]}
+        raise
 
 
 _EMPTY_LISTS = {

@@ -201,7 +201,7 @@ def get_best_snapshot(handle: str = DEFAULT_HANDLE, force_public: bool = False) 
             yt_common.write_snapshot_cache(snap, yt_common.CACHE_FILE)
             return snap
         except Exception as exc:
-            if not allow_scrape:
+            if not allow_scrape or yt_common.is_quota_error(exc):
                 raise
             sys.stderr.write(f"[yt_studio] Studio OAuth unavailable ({exc}); using public snapshot.\n")
 

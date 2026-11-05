@@ -37,9 +37,9 @@ SCOPES_READONLY = [
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
+# youtube.force-ssl accepts every write call the tools make (insert, thumbnails.set, update,
+# delete, comments), so the broader `youtube` and `youtube.upload` scopes are not requested.
 SCOPES_WITH_UPLOAD = SCOPES_READONLY + [
-    "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 

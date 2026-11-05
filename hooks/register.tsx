@@ -9,8 +9,6 @@ const DATA_NAME = 'yt-studio-mateai-youtube-mcp'
 const NEEDED_SCOPES = [
   'https://www.googleapis.com/auth/youtube.readonly',
   'https://www.googleapis.com/auth/yt-analytics.readonly',
-  'https://www.googleapis.com/auth/youtube.upload',
-  'https://www.googleapis.com/auth/youtube',
   'https://www.googleapis.com/auth/youtube.force-ssl',
 ]
 const CONSOLE_PAGES = [

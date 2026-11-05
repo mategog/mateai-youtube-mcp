@@ -24,7 +24,7 @@ def list_channel_videos(
     `query` is a case-insensitive substring match on title or description, applied locally
     (search.list costs 100 quota units; paging the uploads playlist costs ~2 per 50 videos).
     """
-    yt = yt or yt_auth._youtube_client(client_secret_path)
+    yt = yt or yt_auth._youtube_client(client_secret_path, upload_scope=False)
     channel = yt.channels().list(part="contentDetails", mine=True).execute()
     uploads = channel["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
     needle = (query or "").lower()

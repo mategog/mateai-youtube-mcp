@@ -44,7 +44,9 @@ SCOPES_WITH_UPLOAD = SCOPES_READONLY + [
 ]
 
 
-KEYRING_SERVICE = "mateai-youtube-mcp"
+# The desktop app sets its own service name: macOS refuses to let one program overwrite a Keychain
+# item another program created (error -25244), so each program family keeps its own item.
+KEYRING_SERVICE = os.environ.get("MATEAI_KEYRING_SERVICE") or "mateai-youtube-mcp"
 KEYRING_USER = "google-oauth-token"
 
 

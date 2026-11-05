@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yt_auth
+import yt_common
 from yt_auth import DEFAULT_CLIENT_SECRET
 
 
@@ -214,6 +215,8 @@ def upload_private_draft(
             thumb_uploaded = True
         except Exception as exc:
             errors["thumbnailError"] = str(exc)
+            if yt_common.is_quota_error(exc):
+                auto_post_comment = False  # out of quota: stop, don't try the comment
 
     comment_id = None
     if auto_post_comment and final_comment:

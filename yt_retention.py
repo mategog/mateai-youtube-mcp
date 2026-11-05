@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import yt_auth
+import yt_common
 from yt_auth import DEFAULT_CLIENT_SECRET
 from yt_common import _parse_iso_duration
 
@@ -61,6 +62,8 @@ def fetch_video_retention_diagnosis(
                 "watchTimeMin": round(float(r[2]), 1),
             })
     except Exception as exc:
+        if yt_common.is_quota_error(exc):
+            raise
         errors.append(f"trafficSources: {exc}")
 
     # 2. 100-point Audience Retention curve
@@ -76,6 +79,8 @@ def fetch_video_retention_diagnosis(
         ).execute()
         curve_rows = rc_rep.get("rows", [])
     except Exception as exc:
+        if yt_common.is_quota_error(exc):
+            raise
         errors.append(f"retentionCurve: {exc}")
 
     # Optional: load word timings from words.js / json if provided

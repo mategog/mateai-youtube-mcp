@@ -43,6 +43,24 @@ HTTP_HEADERS = {
 }
 
 
+QUOTA_EXCEEDED_MSG = (
+    "YouTube API quota or rate limit reached, so this stopped and nothing more was sent. All MateAI users share "
+    "one Google Cloud project's daily quota, which resets at midnight Pacific time (PT). Do not retry or loop; "
+    "try again after the reset."
+)
+
+
+def is_quota_error(exc: BaseException) -> bool:
+    """True for a YouTube quotaExceeded / rateLimitExceeded HttpError (HTTP 403 or 429). Duck-typed, no Google libs."""
+    if getattr(getattr(exc, "resp", None), "status", None) not in (403, 429):
+        return False
+    content = getattr(exc, "content", b"")
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", "replace")
+    text = f"{content} {getattr(exc, 'error_details', '')} {exc}"
+    return "quotaExceeded" in text or "rateLimitExceeded" in text
+
+
 def _ssl_context() -> ssl.SSLContext:
     # python.org macOS builds ship with no CA certificates until "Install Certificates.command"
     # is run; fall back to the system bundle so HTTPS works without that manual step.

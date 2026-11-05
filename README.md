@@ -120,6 +120,10 @@ Claude will always ask you before **deleting a video**. To make it ask before ot
 
 When an action asks first, Claude tells you exactly what it's about to do and waits for your yes. This is a safety net, not a lock: it relies on Claude asking you, and the plugin can't check that it did.
 
+**Built-in limits (always on, not adjustable):** these back up the MateAI Terms of Service ban on spam-like commenting and protect the daily YouTube quota that all MateAI users share.
+- At most **20 comments and replies per hour** and **100 per 24 hours** (an upload's auto-posted comment counts too). The same text (ignoring case and spacing) can be posted at most **twice in 24 hours**, across all videos. When a limit is hit, nothing is posted and Claude is told when posting is allowed again. The count is kept in `comment_log.json` next to `safety.json` (timestamps and a hash of the text, not the text itself).
+- When YouTube reports the quota or rate limit is used up (`quotaExceeded` / `rateLimitExceeded`), the plugin stops immediately with a clear message instead of retrying. The quota resets at midnight Pacific time.
+
 **Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
 
 **TikTok (optional, needs the [TikTok setup](#tiktok-optional))**

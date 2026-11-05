@@ -178,9 +178,10 @@ class TestConfirmGate(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.safety = Path(tmp.name) / "safety.json"
-        patcher = patch("mcp_server.SAFETY_FILE", self.safety)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for patcher in (patch("mcp_server.SAFETY_FILE", self.safety),
+                        patch("mcp_server.COMMENT_LOG_FILE", Path(tmp.name) / "comment_log.json")):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def _call(self, name, args):
         from mcp_server import _handle_tool_call

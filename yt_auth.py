@@ -37,16 +37,66 @@ SCOPES_READONLY = [
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
+# youtube.force-ssl accepts every write call the tools make (insert, thumbnails.set, update,
+# delete, comments), so the broader `youtube` and `youtube.upload` scopes are not requested.
 SCOPES_WITH_UPLOAD = SCOPES_READONLY + [
-    "https://www.googleapis.com/auth/youtube.upload",
-    "https://www.googleapis.com/auth/youtube",
     "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
 
-def _saved_scopes(token_file: Path) -> list[str]:
-    scopes = json.loads(token_file.read_text(encoding="utf-8")).get("scopes") or []
+# The desktop app sets its own service name: macOS refuses to let one program overwrite a Keychain
+# item another program created (error -25244), so each program family keeps its own item.
+KEYRING_SERVICE = os.environ.get("MATEAI_KEYRING_SERVICE") or "mateai-youtube-mcp"
+KEYRING_USER = "google-oauth-token"
+
+
+def _use_keyring() -> bool:
+    """Opt in with MATEAI_TOKEN_BACKEND=keyring; the default stays the 0600 token file."""
+    return os.environ.get("MATEAI_TOKEN_BACKEND", "").strip().lower() == "keyring"
+
+
+def _keyring():
+    try:
+        import keyring
+    except ImportError as exc:
+        raise RuntimeError(
+            "MATEAI_TOKEN_BACKEND=keyring needs the `keyring` package: pip install keyring"
+        ) from exc
+    return keyring
+
+
+def _keyring_get() -> str | None:
+    return _keyring().get_password(KEYRING_SERVICE, KEYRING_USER)
+
+
+def _keyring_set(token_json: str) -> None:
+    _keyring().set_password(KEYRING_SERVICE, KEYRING_USER, token_json)
+
+
+def _builtin_client_config() -> dict | None:
+    """Shared Desktop client from MATEAI_OAUTH_CLIENT_ID/_SECRET (spike: env; a build would embed it)."""
+    client_id = os.environ.get("MATEAI_OAUTH_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("MATEAI_OAUTH_CLIENT_SECRET", "").strip()
+    if not (client_id and client_secret):
+        return None
+    return {
+        "installed": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": ["http://localhost"],
+        }
+    }
+
+
+def _scopes_of(info: dict) -> list[str]:
+    scopes = info.get("scopes") or []
     return scopes.split(" ") if isinstance(scopes, str) else list(scopes)
+
+
+def _saved_scopes(token_file: Path) -> list[str]:
+    return _scopes_of(json.loads(token_file.read_text(encoding="utf-8")))
 
 
 def _expired_marker() -> Path:
@@ -75,7 +125,16 @@ def get_oauth_credentials(
     creds = None
 
     covers_request = True
-    if not force_reauth and TOKEN_FILE.exists():
+    use_keyring = _use_keyring()
+    stored = _keyring_get() if use_keyring and not force_reauth else None
+    if not force_reauth and stored:
+        info = json.loads(stored)
+        granted = _scopes_of(info)
+        covers_request = set(scopes) <= set(granted)
+        creds = Credentials.from_authorized_user_info(
+            info, granted + [s for s in scopes if s not in granted]
+        )
+    elif not force_reauth and not use_keyring and TOKEN_FILE.exists():
         # Load with the union of what the file says was granted and what this call needs, so
         # saving never narrows the file's scopes (a read call used to overwrite them).
         granted = _saved_scopes(TOKEN_FILE)
@@ -99,18 +158,26 @@ def get_oauth_credentials(
                     f"'Testing' mode.)\nDetails: {exc}"
                 ) from exc
         else:
-            if not client_secret_path.exists():
+            builtin = None if client_secret_path.exists() else _builtin_client_config()
+            if builtin:
+                flow = InstalledAppFlow.from_client_config(builtin, scopes)
+            elif client_secret_path.exists():
+                flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
+            else:
                 raise FileNotFoundError(
                     f"Missing OAuth credentials at {client_secret_path}.\n"
                     "Download an OAuth 2.0 Desktop client JSON from Google Cloud Console "
                     "and save it as client_secret.json (see README.md)."
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
+            # google-auth-oauthlib adds a PKCE code_verifier/challenge (S256) by default.
             creds = flow.run_local_server(port=0, prompt="consent")
 
-        TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
-        os.chmod(TOKEN_FILE, 0o600)
+        if use_keyring:
+            _keyring_set(creds.to_json())
+        else:
+            TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+            os.chmod(TOKEN_FILE, 0o600)
         with contextlib.suppress(OSError):
             _expired_marker().unlink(missing_ok=True)
 

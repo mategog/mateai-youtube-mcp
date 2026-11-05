@@ -291,7 +291,7 @@ def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
         "description": (
             "Upload a local MP4/MOV video file to YouTube Studio via YouTube Data API v3 (videos.insert, costs ~1,600 daily quota units) "
             "and optionally attach a custom thumbnail (thumbnails.set) and top-level pinned comment (commentThreads.insert). "
-            "Requires channel OAuth2 with youtube.upload scope. Non-idempotent: each call creates a new YouTube video resource and returns "
+            "Requires channel OAuth2 with youtube.force-ssl scope. Non-idempotent: each call creates a new YouTube video resource and returns "
             "{videoId, studioUrl, watchUrl, privacyStatus, publishAt}. "
             "Defaults to privacy_status='private' (unpublished draft); when publish_at (ISO 8601 future timestamp) is provided, privacy_status is forced to 'private' "
             "until YouTube automatically publishes the video at publish_at. Inline parameters (title, description, tags, hashtags, pinned_comment) override values parsed from spec_path."

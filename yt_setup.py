@@ -108,6 +108,11 @@ def run_interactive_setup_wizard() -> None:
     print("  MateAI YouTube Studio MCP — Guided 1-Command Setup Wizard")
     print("=" * 72)
 
+    if yt_auth._desktop_login() is not None:
+        print("\nYouTube is connected through the MateAI Studio app, and this plugin uses that login.")
+        print("To sign in again or switch accounts, open MateAI Studio and click Connect YouTube.")
+        return
+
     # Step 1: Ensure .venv and Google API client packages exist
     venv_py = yt_common.STATE_DIR / ".venv" / "bin" / "python"
     if not venv_py.exists():

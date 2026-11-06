@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import time
@@ -12,6 +13,8 @@ import yt_auth
 import yt_common
 import yt_snapshot
 import yt_studio
+
+os.environ["MATEAI_DESKTOP_LOGIN"] = "off"  # never read the real MateAI Studio login in tests
 
 VID = "v" * 11
 

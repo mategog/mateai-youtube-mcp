@@ -11,6 +11,8 @@ from unittest import mock
 import yt_auth
 import yt_studio
 
+os.environ["MATEAI_DESKTOP_LOGIN"] = "off"  # never read the real MateAI Studio login in tests
+
 
 class FakeRefreshError(Exception):
     pass

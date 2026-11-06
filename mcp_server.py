@@ -36,6 +36,7 @@ from yt_studio import (
     delete_video,
     fetch_video_public_details,
     fetch_video_retention_diagnosis,
+    fetch_video_text,
     get_best_snapshot,
     list_channel_videos,
     list_video_comments,
@@ -110,7 +111,12 @@ def _text_result(text: str) -> dict[str, Any]:
 
 
 def _json_result(data: Any) -> dict[str, Any]:
-    return _text_result(json.dumps(data, indent=2))
+    """Text for older clients plus structuredContent, which MCP requires from tools that declare an
+    outputSchema (Claude Desktop rejects a result without it)."""
+    result = _text_result(json.dumps(data, indent=2))
+    if isinstance(data, dict):
+        result["structuredContent"] = data
+    return result
 
 
 def _opt_path(args: dict[str, Any], key: str) -> Path | None:
@@ -160,10 +166,9 @@ def _reply(msg_id: Any, result: dict[str, Any]) -> None:
                 "mode": {"type": "string", "enum": ["studio_oauth", "public_scrape"]},
                 "channel": {"type": "object"},
                 "videos": {"type": "array", "items": {"type": "object"}},
-                "shorts": {"type": "array", "items": {"type": "object"}},
                 "dashboardPath": {"type": "string"},
             },
-            "required": ["mode", "channel", "videos", "shorts", "dashboardPath"],
+            "required": ["mode", "channel", "videos", "dashboardPath"],
         },
         "annotations": {
             "title": "Fetch YouTube Channel Snapshot & Update Local Dashboard",
@@ -223,7 +228,8 @@ def _do_yt_shorts_experiment_table(args: dict[str, Any]) -> dict[str, Any]:
     {
         "name": "yt_video_details",
         "description": (
-            "Fetch public video metadata plus owner-authorized YouTube Analytics retention diagnostics for a single 11-character video_id: "
+            "Fetch the owner's view of one video (title, description, tags, privacyStatus, publishAt; works for private and scheduled videos) "
+            "plus owner-authorized YouTube Analytics retention diagnostics for a single 11-character video_id: "
             "100-point elapsedVideoTimeRatio audience retention curve, exact MM:SS drop-off cliffs, relativeRetentionPerformance peer percentiles, "
             "and traffic source breakdown. Retention curve and traffic diagnostics require channel-owner OAuth2 (a studioDiagnosisError explains a missing scope). "
             "Public page metadata (title, views, likes) is scraped only when force_public=true or MATEAI_YT_PUBLIC_SCRAPE=1. "
@@ -255,8 +261,10 @@ def _do_yt_shorts_experiment_table(args: dict[str, Any]) -> dict[str, Any]:
             "properties": {
                 "videoId": {"type": "string"},
                 "title": {"type": "string"},
-                "viewCount": {"type": "integer"},
-                "likeCount": {"type": "integer"},
+                "description": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "privacyStatus": {"type": "string"},
+                "publishAt": {"type": ["string", "null"]},
                 "studioDiagnosis": {"type": "object"},
             },
             "required": ["videoId"],
@@ -277,6 +285,12 @@ def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
         details = fetch_video_public_details(video_id)
     else:
         details = {"videoId": video_id, "url": f"https://www.youtube.com/watch?v={video_id}", "sourceMode": "studio_only"}
+    try:
+        details.update(fetch_video_text(video_id))
+    except Exception as exc:
+        if yt_common.is_quota_error(exc):
+            raise
+        details["videoTextError"] = str(exc)
     try:
         diag = fetch_video_retention_diagnosis(video_id, words_or_script_path=words_path)
         details["studioDiagnosis"] = diag
@@ -358,7 +372,7 @@ def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
                 "privacyStatus": {"type": "string"},
                 "publishAt": {"type": ["string", "null"]},
             },
-            "required": ["videoId", "studioUrl", "watchUrl"],
+            "description": "A dry run returns dryRun=true and what would be sent, without videoId or URLs.",
         },
         "annotations": {
             "title": "Upload Video Draft or Scheduled Release to YouTube Studio",
@@ -454,7 +468,7 @@ def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
                 "videoId": {"type": "string"},
                 "studioUrl": {"type": "string"},
             },
-            "required": ["videoId", "studioUrl"],
+            "required": ["videoId"],
         },
         "annotations": {
             "title": "Update Existing YouTube Video Metadata, Schedule, or Thumbnail",
@@ -519,7 +533,7 @@ def _do_yt_update_video(args: dict[str, Any]) -> dict[str, Any]:
                 "videoId": {"type": "string"},
                 "text": {"type": "string"},
             },
-            "required": ["commentId", "videoId"],
+            "required": ["videoId"],
         },
         "annotations": {
             "title": "Post Public Top-Level YouTube Comment",

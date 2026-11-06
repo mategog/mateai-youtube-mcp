@@ -56,6 +56,27 @@ def list_channel_videos(
     return {"videos": videos[:limit]}
 
 
+def fetch_video_text(
+    video_id: str,
+    yt=None,
+    client_secret_path: Path = DEFAULT_CLIENT_SECRET,
+) -> dict[str, Any]:
+    """The owner's view of one video's text and schedule: title, description, tags, privacy, publishAt.
+    Works for private and scheduled videos. 1 quota unit."""
+    yt = yt or yt_auth._youtube_client(client_secret_path, upload_scope=False)
+    items = yt.videos().list(part="snippet,status", id=video_id).execute().get("items", [])
+    if not items:
+        raise ValueError(f"Video not found on the signed-in channel: {video_id}")
+    sn, st = items[0]["snippet"], items[0]["status"]
+    return {
+        "title": sn.get("title", ""),
+        "description": sn.get("description", ""),
+        "tags": sn.get("tags", []),
+        "privacyStatus": st.get("privacyStatus"),
+        "publishAt": st.get("publishAt"),
+    }
+
+
 def list_video_comments(
     video_id: str,
     limit: int = 20,

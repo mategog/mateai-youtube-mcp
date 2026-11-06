@@ -49,6 +49,7 @@ from yt_common import (  # noqa: F401
 )
 from yt_manage import (  # noqa: F401
     delete_video,
+    fetch_video_text,
     list_channel_videos,
     list_video_comments,
     reply_to_comment,

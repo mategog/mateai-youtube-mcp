@@ -26,6 +26,8 @@ That is what this plugin does. It connects **Claude Code / Claude Desktop** or *
 
 Hosted "creator OS" tools charge $19-$49 a month to wrap those same free Google APIs. Here nothing sits between your AI and YouTube: it runs **100% on your machine**, your login stays in a local file only you can read, and the plugin costs **$0**. Connecting takes one command, **`/yt-setup`** (see [Easy Setup](#easy-setup-yt-setup-claude-code)).
 
+> **Rather skip the Google Cloud setup?** MateAI Studio is a desktop app built on this plugin: you sign in to YouTube with one click, without creating your own Google Cloud project. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateai-io.github.io/)
+
 Public stats (no login) are available as an opt-in mode: `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`. Built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
 
 ---

@@ -276,6 +276,8 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 
 **Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
 
+**With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
+
 ---
 
 ## Support & Channel

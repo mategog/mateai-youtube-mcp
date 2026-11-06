@@ -9,6 +9,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import yt_common
@@ -104,6 +106,62 @@ def _launched_by_desktop() -> bool:
     return os.environ.get("MATEAI_LAUNCHER", "").strip().lower() == "desktop"
 
 
+# MateAI Studio's login (macOS Keychain). When it exists, the plugin uses it instead of its own, so one
+# Connect (or reconnect after revoking access at Google) fixes both. Read-only: macOS won't let this
+# program overwrite the app's item, so refreshed access tokens are kept in memory only.
+DESKTOP_KEYCHAIN_SERVICE = "dev.mateai.desktop"
+_desktop_cache = None  # Credentials refreshed from the app's login, reused while valid
+
+
+def _desktop_login() -> dict | None:
+    """MateAI Studio's saved login, or None (not macOS, no app login, access denied, turned off with
+    MATEAI_DESKTOP_LOGIN=off, or we are the app's own MCP)."""
+    off = os.environ.get("MATEAI_DESKTOP_LOGIN", "").strip().lower() in ("off", "0", "false")
+    if off or sys.platform != "darwin" or _use_keyring() or _launched_by_desktop():
+        return None
+    try:
+        # The first read shows a macOS prompt ("security wants to use ... dev.mateai.desktop"): Always Allow.
+        out = subprocess.run(
+            ["/usr/bin/security", "find-generic-password", "-s", DESKTOP_KEYCHAIN_SERVICE,
+             "-a", KEYRING_USER, "-w"],
+            capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+        )
+        info = json.loads(out.stdout) if out.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    return info if isinstance(info, dict) and info.get("refresh_token") else None
+
+
+def _desktop_credentials(info, scopes, Credentials, Request, RefreshError):
+    global _desktop_cache
+    granted = _scopes_of(info)
+    if not set(scopes) <= set(granted):
+        raise RuntimeError(
+            "YouTube is connected through MateAI Studio, but only for reading. To upload or edit, "
+            "open MateAI Studio, disconnect YouTube and connect again with managing videos allowed."
+        )
+    cached = _desktop_cache
+    if cached is not None and cached.refresh_token == info["refresh_token"] and cached.valid:
+        return cached
+    creds = Credentials.from_authorized_user_info(info, granted)
+    if not creds.valid:
+        try:
+            creds.refresh(Request())
+        except RefreshError as exc:
+            raise RuntimeError(
+                "Your YouTube login in MateAI Studio expired or was revoked, so Google refused to "
+                "renew it. Open MateAI Studio and click Connect YouTube; this plugin uses that login."
+                f"\nDetails: {exc}"
+            ) from exc
+    _desktop_cache = creds
+    return creds
+
+
+def has_login() -> bool:
+    """A saved login exists: this plugin's token file or MateAI Studio's."""
+    return TOKEN_FILE.exists() or _desktop_login() is not None
+
+
 def _expired_marker() -> Path:
     """`.tokens/expired`: left by a failed refresh so /yt-setup knows the saved login is dead."""
     return TOKEN_FILE.with_name("expired")
@@ -127,6 +185,9 @@ def get_oauth_credentials(
         ) from exc
 
     scopes = SCOPES_WITH_UPLOAD if upload_scope else SCOPES_READONLY
+    desktop = None if force_reauth else _desktop_login()
+    if desktop is not None:
+        return _desktop_credentials(desktop, scopes, Credentials, Request, RefreshError)
     creds = None
 
     covers_request = True

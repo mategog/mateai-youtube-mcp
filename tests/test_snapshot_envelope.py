@@ -66,6 +66,16 @@ class EnvelopeShapeTests(unittest.TestCase):
             yt_common.write_snapshot_cache(snap, path)
             self.assertEqual(path.read_text(encoding="utf-8"), json.dumps(snap, indent=2))
 
+    def test_report_json_cannot_close_its_script_block(self):
+        import yt_snapshot
+
+        snap = {"videos": [{"title": "</script><script>alert(1)</script>"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            html = yt_snapshot.render_html_report(snap, Path(tmp) / "report.html").read_text(encoding="utf-8")
+        payload = html.split("const SNAP = ", 1)[1].split(";\n", 1)[0]
+        self.assertNotIn("<", payload)
+        self.assertEqual(json.loads(payload), snap)
+
 
 class ClientScopeTests(unittest.TestCase):
     def setUp(self):

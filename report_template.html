@@ -137,6 +137,11 @@
 <script>
 const SNAP = __SNAPSHOT_JSON__;
 
+// Every snapshot value placed into HTML goes through esc(): titles and descriptions can come from
+// public pages of channels the user doesn't own.
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
 function fmtNum(n) {
   return (n === null || n === undefined) ? "—" : Number(n).toLocaleString();
 }
@@ -167,7 +172,7 @@ document.getElementById("summary-tiles").innerHTML = `
   </div>
   <div class="tile top">
     <div class="k">Top Upload</div>
-    <div class="v">${fmtNum(topV.views || 0)}<small title="${topV.title || ''}">${topV.title || "—"}</small></div>
+    <div class="v">${fmtNum(topV.views || 0)}<small title="${esc(topV.title)}">${esc(topV.title || "—")}</small></div>
   </div>
   <div class="tile">
     <div class="k">Shorts Performance</div>
@@ -191,14 +196,14 @@ function renderDetail(v) {
   const swpPct = v.viewedVsSwipedPct ?? null;
 
   el.innerHTML = `
-    <img class="thumb" src="${v.thumbnail}" alt="">
-    <h2>${v.title}</h2>
-    <div class="meta">${v.format === "short" ? "YouTube Short" : "Long-form Video"} · Published ${v.publishDate || "—"} · ${fmtDur(v.durationSec)}</div>
+    <img class="thumb" src="${esc(v.thumbnail)}" alt="">
+    <h2>${esc(v.title)}</h2>
+    <div class="meta">${v.format === "short" ? "YouTube Short" : "Long-form Video"} · Published ${esc(v.publishDate || "—")} · ${fmtDur(v.durationSec)}</div>
     <div class="facts">
       <div class="fact"><div class="k">Views</div><div class="v">${fmtNum(v.views)}</div></div>
       <div class="fact"><div class="k">Likes</div><div class="v">${fmtNum(v.likes)}</div></div>
       <div class="fact"><div class="k">Engaged Views</div><div class="v">${v.engagedViews != null ? fmtNum(v.engagedViews) : "Studio OAuth"}</div></div>
-      <div class="fact"><div class="k">Subs Gained</div><div class="v">${v.subsGained != null ? "+" + v.subsGained : "Studio OAuth"}</div></div>
+      <div class="fact"><div class="k">Subs Gained</div><div class="v">${v.subsGained != null ? "+" + esc(v.subsGained) : "Studio OAuth"}</div></div>
     </div>
     <div class="section">Retention & Relative Reach</div>
     <div class="bar" style="--c:var(--cyan)">
@@ -208,19 +213,19 @@ function renderDetail(v) {
     </div>
     <div class="bar" style="--c:var(--green)">
       <span>Avg % Viewed</span>
-      <div class="track"><div class="fill" style="width:${avgPct || 0}%"></div></div>
-      <span class="n">${avgPct != null ? avgPct + "%" : "OAuth"}</span>
+      <div class="track"><div class="fill" style="width:${Number(avgPct) || 0}%"></div></div>
+      <span class="n">${avgPct != null ? esc(avgPct) + "%" : "OAuth"}</span>
     </div>
     <div class="bar" style="--c:var(--orange)">
       <span>Viewed vs Swiped</span>
-      <div class="track"><div class="fill" style="width:${swpPct || 0}%"></div></div>
-      <span class="n">${swpPct != null ? swpPct + "%" : "OAuth"}</span>
+      <div class="track"><div class="fill" style="width:${Number(swpPct) || 0}%"></div></div>
+      <span class="n">${swpPct != null ? esc(swpPct) + "%" : "OAuth"}</span>
     </div>
     <div class="section">Description Preview</div>
-    <div class="desc-box">${v.descriptionPreview || "No description"}</div>
+    <div class="desc-box">${esc(v.descriptionPreview || "No description")}</div>
     <div class="actions">
-      <a class="btn primary" href="${v.url}" target="_blank" rel="noopener">Watch on YouTube ↗</a>
-      <a class="btn" href="https://studio.youtube.com/video/${v.videoId}/analytics/tab-overview/period-default" target="_blank" rel="noopener">Open in Studio ↗</a>
+      <a class="btn primary" href="${esc(v.url)}" target="_blank" rel="noopener">Watch on YouTube ↗</a>
+      <a class="btn" href="https://studio.youtube.com/video/${encodeURIComponent(v.videoId || "")}/analytics/tab-overview/period-default" target="_blank" rel="noopener">Open in Studio ↗</a>
     </div>
   `;
 }
@@ -229,10 +234,10 @@ function renderTable() {
   const tbody = document.getElementById("video-tbody");
   const filtered = vids.filter(v => activeFilter === "all" || v.format === activeFilter);
   tbody.innerHTML = filtered.map(v => `
-    <tr class="row ${v.videoId === selectedId ? 'sel' : ''}" data-id="${v.videoId}">
-      <td><span class="fmt-pill ${v.format === 'short' ? 'fmt-short' : 'fmt-long'}">${v.format}</span></td>
-      <td class="v-title">${v.title}</td>
-      <td>${v.publishDate || "—"}</td>
+    <tr class="row ${v.videoId === selectedId ? 'sel' : ''}" data-id="${esc(v.videoId)}">
+      <td><span class="fmt-pill ${v.format === 'short' ? 'fmt-short' : 'fmt-long'}">${esc(v.format)}</span></td>
+      <td class="v-title">${esc(v.title)}</td>
+      <td>${esc(v.publishDate || "—")}</td>
       <td class="num"><b>${fmtNum(v.views)}</b></td>
       <td class="num">${fmtNum(v.likes)}</td>
       <td class="num">${v.avgViewPct != null ? v.avgViewPct.toFixed(1) + "%" : "—"}</td>

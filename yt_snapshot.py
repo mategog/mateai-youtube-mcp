@@ -186,7 +186,8 @@ def build_shorts_experiment_markdown(snapshot: dict[str, Any]) -> str:
 def render_html_report(snapshot: dict[str, Any], out_path: Path = yt_common.REPORT_FILE) -> Path:
     """Render interactive HTML dashboard from report_template.html."""
     template = yt_common.TEMPLATE_FILE.read_text(encoding="utf-8")
-    payload_json = json.dumps(snapshot, indent=2)
+    # "<" escaped so a scraped "</script>" can't close the script block the JSON sits in.
+    payload_json = json.dumps(snapshot, indent=2).replace("<", "\\u003c")
     rendered = template.replace("__SNAPSHOT_JSON__", payload_json)
     out_path.write_text(rendered, encoding="utf-8")
     return out_path

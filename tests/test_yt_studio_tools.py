@@ -164,8 +164,9 @@ class TestMcpRegistration(unittest.TestCase):
         m.assert_called_once_with(query="jev", limit=5)
         self.assertEqual(json.loads(out["content"][0]["text"]), {"videos": []})
 
-        with patch("mcp_server.delete_video", return_value={"videoId": "x"}) as m:
-            _handle_tool_call("yt_delete_video", {"video_id": "v" * 11, "confirm_title": "T", "user_confirmed": True})
+        with patch("mcp_server.delete_video", return_value={"videoId": "x"}) as m, \
+                patch("mcp_server._ask_user", return_value=True):
+            _handle_tool_call("yt_delete_video", {"video_id": "v" * 11, "confirm_title": "T"})
         m.assert_called_once_with(video_id="v" * 11, confirm_title="T")
 
 
@@ -178,8 +179,16 @@ class TestConfirmGate(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.safety = Path(tmp.name) / "safety.json"
+        self.answer = True
+        self.asked = []
+
+        def fake_ask(message):
+            self.asked.append(message)
+            return self.answer
+
         for patcher in (patch("mcp_server.SAFETY_FILE", self.safety),
-                        patch("mcp_server.COMMENT_LOG_FILE", Path(tmp.name) / "comment_log.json")):
+                        patch("mcp_server.COMMENT_LOG_FILE", Path(tmp.name) / "comment_log.json"),
+                        patch("mcp_server._ask_user", side_effect=fake_ask)):
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -191,24 +200,44 @@ class TestConfirmGate(unittest.TestCase):
     def _save(self, names):
         self.safety.write_text(json.dumps({"confirm": names}))
 
-    def test_delete_is_always_gated_until_user_confirmed(self):
-        with patch("mcp_server.delete_video") as m:
-            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T"})
-        m.assert_not_called()
-        self.assertTrue(out["isError"])
-        text = out["content"][0]["text"]
-        self.assertIn("CONFIRMATION REQUIRED", text)
-        self.assertIn("nothing was done", text)
-        self.assertIn("yt_delete_video", text)
-
-    def test_delete_runs_once_user_confirmed(self):
+    def test_delete_runs_only_after_the_dialog_says_yes(self):
         with patch("mcp_server.delete_video", return_value={"videoId": self.VID}) as m:
-            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T", "user_confirmed": True})
+            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T"})
         m.assert_called_once_with(video_id=self.VID, confirm_title="T")
         self.assertNotIn("isError", out)
+        self.assertIn("Delete a video", self.asked[0])
+        self.assertIn("cannot be undone", self.asked[0])
+        self.assertIn(self.VID, self.asked[0])
+
+    def test_delete_declined_in_dialog_does_nothing(self):
+        self.answer = False
+        with patch("mcp_server.delete_video") as m:
+            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T", "user_confirmed": True})
+        m.assert_not_called()
+        self.assertTrue(out["isError"])
+        self.assertIn("DECLINED", out["content"][0]["text"])
+
+    def test_model_set_flag_cannot_delete_without_a_dialog(self):
+        self.answer = None  # client can't show the dialog
+        with patch("mcp_server.delete_video") as m:
+            out = self._call("yt_delete_video", {"video_id": self.VID, "confirm_title": "T", "user_confirmed": True})
+        m.assert_not_called()
+        self.assertTrue(out["isError"])
+        self.assertIn("YouTube Studio", out["content"][0]["text"])
+
+    def test_optional_gate_falls_back_to_user_confirmed_without_a_dialog(self):
+        self._save(["yt_reply_comment"])
+        self.answer = None
+        with patch("mcp_server.reply_to_comment", return_value={"commentId": "x"}) as reply:
+            bounced = self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"})
+            reply.assert_not_called()
+            self.assertIn("CONFIRMATION REQUIRED", bounced["content"][0]["text"])
+            self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi", "user_confirmed": True})
+        reply.assert_called_once()
 
     def test_saved_settings_gate_extra_tools_but_not_others(self):
         self._save(["yt_reply_comment"])
+        self.answer = False
         with patch("mcp_server.reply_to_comment") as reply, patch("mcp_server.list_channel_videos", return_value={"videos": []}) as lst:
             gated = self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"})
             self._call("yt_list_videos", {})
@@ -220,6 +249,7 @@ class TestConfirmGate(unittest.TestCase):
         with patch("mcp_server.reply_to_comment", return_value={"commentId": "x"}) as reply:
             self._call("yt_reply_comment", {"parent_id": "T1", "text": "hi"})
         reply.assert_called_once()
+        self.assertEqual(self.asked, [])
 
     def test_unknown_or_corrupt_saved_settings_never_crash_or_drop_delete(self):
         from mcp_server import ALWAYS_CONFIRM, confirm_tools
@@ -236,7 +266,10 @@ class TestConfirmGate(unittest.TestCase):
         listed = {t["name"]: t for t in listed_tools()}
         for n in ("yt_delete_video", "yt_post_comment", "yt_set_safety_settings"):
             self.assertTrue(listed[n]["description"].startswith("DANGEROUS"))
-            self.assertIn("user_confirmed", listed[n]["inputSchema"]["properties"])
+        # Only the dialog can approve the always-on ones, so they don't offer the model-set flag.
+        self.assertIn("user_confirmed", listed["yt_post_comment"]["inputSchema"]["properties"])
+        for n in ("yt_delete_video", "yt_set_safety_settings"):
+            self.assertNotIn("user_confirmed", listed[n]["inputSchema"]["properties"])
         self.assertFalse(listed["yt_list_videos"]["description"].startswith("DANGEROUS"))
         self.assertNotIn("user_confirmed", listed["yt_list_videos"]["inputSchema"]["properties"])
         by_name = {t["name"]: t for t in TOOLS}
@@ -258,7 +291,8 @@ class TestConfirmGate(unittest.TestCase):
         self.assertEqual(by_tool["yt_reply_comment"]["label"], "Reply to a comment")
 
     def test_set_is_gated_and_writes_nothing_until_confirmed(self):
-        out = self._call("yt_set_safety_settings", {"confirm": ["yt_reply_comment"]})
+        self.answer = None
+        out = self._call("yt_set_safety_settings", {"confirm": ["yt_reply_comment"], "user_confirmed": True})
         self.assertTrue(out["isError"])
         self.assertFalse(self.safety.exists())
 

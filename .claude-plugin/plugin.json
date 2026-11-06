@@ -6,7 +6,7 @@
     "name": "MateAI",
     "url": "https://www.youtube.com/@mateai-c6m"
   },
-  "icon": "./assets/logo.png",
+  "icon": "./assets/mateai-logo.png",
   "supportUrl": "https://github.com/mategog/mateai-youtube-mcp/issues",
   "privacyPolicyUrl": "https://github.com/mategog/mateai-youtube-mcp/blob/main/PRIVACY.md",
   "mcpServers": {

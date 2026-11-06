@@ -78,3 +78,23 @@ class SnapshotTypesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CacheExpiryTests(unittest.TestCase):
+    def test_purges_snapshot_and_report_older_than_30_days_only(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            cache, report = Path(d) / "channel_snapshot.json", Path(d) / "report.html"
+            cache.write_text("{}")
+            report.write_text("<html>")
+            now = 1_800_000_000.0
+            os.utime(cache, (now - 31 * 86400,) * 2)  # stale
+            os.utime(report, (now - 29 * 86400,) * 2)  # still fresh
+            with mock.patch.object(yt_common, "CACHE_FILE", cache), mock.patch.object(yt_common, "REPORT_FILE", report):
+                yt_common.purge_stale_youtube_cache(now=now)
+                self.assertFalse(cache.exists())
+                self.assertTrue(report.exists())
+                yt_common.purge_stale_youtube_cache(now=now + 2 * 86400)  # report now 31 days old; cache missing is fine
+                self.assertFalse(report.exists())

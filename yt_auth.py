@@ -99,6 +99,11 @@ def _saved_scopes(token_file: Path) -> list[str]:
     return _scopes_of(json.loads(token_file.read_text(encoding="utf-8")))
 
 
+def _launched_by_desktop() -> bool:
+    """MateAI Desktop sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
+    return os.environ.get("MATEAI_LAUNCHER", "").strip().lower() == "desktop"
+
+
 def _expired_marker() -> Path:
     """`.tokens/expired`: left by a failed refresh so /yt-setup knows the saved login is dead."""
     return TOKEN_FILE.with_name("expired")
@@ -151,10 +156,15 @@ def get_oauth_credentials(
             except RefreshError as exc:
                 with contextlib.suppress(OSError):
                     _expired_marker().write_text("", encoding="utf-8")
+                how = (
+                    "Sign in again: open MateAI Desktop and click Connect YouTube."
+                    if _launched_by_desktop()
+                    else "Sign in again: type /yt-setup in Claude Code, or run "
+                    "`python3 yt_studio.py setup`."
+                )
                 raise RuntimeError(
                     "Your YouTube login expired or was revoked, so Google refused to renew it. "
-                    "Sign in again: type /yt-setup in Claude Code, or run "
-                    "`python3 yt_studio.py setup`. (Google ends logins after 7 days for apps in "
+                    f"{how} (Google ends logins after 7 days for apps in "
                     f"'Testing' mode.)\nDetails: {exc}"
                 ) from exc
         else:
@@ -163,6 +173,8 @@ def get_oauth_credentials(
                 flow = InstalledAppFlow.from_client_config(builtin, scopes)
             elif client_secret_path.exists():
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
+            elif _launched_by_desktop():
+                raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Desktop and click Connect YouTube.")
             else:
                 raise FileNotFoundError(
                     f"Missing OAuth credentials at {client_secret_path}.\n"

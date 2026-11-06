@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import os
 import sys
 import tempfile
 import types
@@ -251,6 +252,55 @@ class TestScopesSurviveReadCalls(unittest.TestCase):
                 self.assertEqual(creds.refreshes, 0)
                 self.assertEqual(creds.token, "FAKE-FULL")
             self.assertEqual(set(self._saved(path)["scopes"]), set(self.UPLOAD))
+
+
+class TestDesktopSignInMessages(unittest.TestCase):
+    """Launched by MateAI Desktop (MATEAI_LAUNCHER=desktop), the fix is the app's Connect YouTube button."""
+
+    def _refresh_error(self, launcher):
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds.refresh.side_effect = FakeRefreshError("invalid_grant")
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / "token.json"
+            token.write_text("{}", encoding="utf-8")
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, _fake_google_modules(creds)), \
+                    mock.patch.dict(os.environ, {"MATEAI_LAUNCHER": launcher}):
+                with self.assertRaises(RuntimeError) as ctx:
+                    yt_studio.get_oauth_credentials()
+        return str(ctx.exception)
+
+    def _no_login_error(self, launcher):
+        env = {"MATEAI_LAUNCHER": launcher, "MATEAI_OAUTH_CLIENT_ID": "", "MATEAI_OAUTH_CLIENT_SECRET": ""}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(yt_auth, "TOKEN_FILE", Path(tmp) / "token.json"), \
+                    mock.patch.dict(sys.modules, _fake_google_modules(None)), \
+                    mock.patch.dict(os.environ, env):
+                with self.assertRaises(FileNotFoundError) as ctx:
+                    yt_auth.get_oauth_credentials(Path(tmp) / "client_secret.json")
+        return str(ctx.exception)
+
+    def test_expired_login_points_desktop_users_to_the_app(self):
+        msg = self._refresh_error("desktop")
+        self.assertIn("open MateAI Desktop and click Connect YouTube", msg)
+        self.assertIn("7 days", msg)
+        self.assertNotIn("/yt-setup", msg)
+        self.assertNotIn("yt_studio.py", msg)
+
+    def test_expired_login_message_unchanged_for_plugin_users(self):
+        msg = self._refresh_error("")
+        self.assertIn("type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`.", msg)
+        self.assertNotIn("MateAI Desktop", msg)
+
+    def test_no_login_points_desktop_users_to_the_app(self):
+        msg = self._no_login_error("desktop")
+        self.assertIn("Open MateAI Desktop and click Connect YouTube", msg)
+        self.assertNotIn("client_secret", msg)
+
+    def test_no_login_message_unchanged_for_plugin_users(self):
+        msg = self._no_login_error("")
+        self.assertIn("client_secret.json", msg)
+        self.assertNotIn("MateAI Desktop", msg)
 
 
 if __name__ == "__main__":

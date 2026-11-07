@@ -92,6 +92,22 @@ def _build_upload_body(
     }
 
 
+def _check_title_description(title: str | None, description: str | None) -> None:
+    """YouTube rejects these with an unhelpful invalidTitle/invalidDescription error; catch them first."""
+    for name, text in (("title", title), ("description", description)):
+        if text and ("<" in text or ">" in text):
+            raise ValueError(
+                f"The {name} contains '<' or '>', which YouTube doesn't allow. "
+                "Write it out instead, e.g. 'over 75%' instead of '>75%'."
+            )
+    if title and len(title) > 100:
+        raise ValueError(f"The title is {len(title)} characters; YouTube allows at most 100.")
+    if description and len(description.encode("utf-8")) > 5000:
+        raise ValueError(
+            f"The description is {len(description.encode('utf-8'))} bytes (UTF-8); YouTube allows at most 5000."
+        )
+
+
 def _build_update_changes(
     title: str | None,
     description: str | None,
@@ -101,6 +117,13 @@ def _build_update_changes(
     contains_synthetic_media: bool | None,
 ) -> dict[str, dict[str, Any]]:
     """Only the `snippet`/`status` fields an update changes (a part is absent if untouched). Pure: shared by dry run and real update."""
+    _check_title_description(title, description)
+    if (privacy_status is not None or publish_at is not None) and contains_synthetic_media is None:
+        # videos.list can't read the flag back, and a status update without it may reset it.
+        raise ValueError(
+            "Changing privacy_status or publish_at re-sends the video's status, which can reset its "
+            "altered/synthetic media disclosure. Pass contains_synthetic_media explicitly (true or false)."
+        )
     snippet = {
         key: value
         for key, value in (("title", title), ("description", description), ("tags", tags))
@@ -159,6 +182,8 @@ def upload_private_draft(
         hashtag_line = " ".join(clean_tags)
         if hashtag_line not in final_desc:
             final_desc = f"{final_desc}\n\n{hashtag_line}".strip()
+
+    _check_title_description(final_title, final_desc)
 
     final_tags = tags if tags is not None else meta["tags"]
     final_comment = pinned_comment if pinned_comment is not None else meta["pinnedComment"]
@@ -309,13 +334,18 @@ def update_video_metadata(
         if parts else {"snippet": snippet, "status": status}
     )
 
+    # The metadata is already updated, so a failed thumbnail must not raise; but say why.
+    errors: dict[str, str] = {}
     thumb_updated = False
     if thumbnail_path and thumbnail_path.exists():
-        yt.thumbnails().set(
-            videoId=video_id,
-            media_body=MediaFileUpload(str(thumbnail_path)),
-        ).execute()
-        thumb_updated = True
+        try:
+            yt.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(str(thumbnail_path)),
+            ).execute()
+            thumb_updated = True
+        except Exception as exc:
+            errors["thumbnailError"] = str(exc)
 
     # videos.update echoes back only the parts that were sent; fall back to what videos.list returned.
     result_snippet = updated.get("snippet", snippet)
@@ -327,6 +357,7 @@ def update_video_metadata(
         "publishAt": result_status.get("publishAt"),
         "thumbnailUpdated": thumb_updated,
         "studioEditUrl": f"https://studio.youtube.com/video/{video_id}/edit",
+        **errors,
     }
 
 

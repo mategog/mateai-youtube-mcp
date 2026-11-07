@@ -419,7 +419,9 @@ def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
             "Perform a partial, idempotent update on an existing YouTube video's metadata, visibility, schedule, or custom thumbnail "
             "in YouTube Studio via YouTube Data API v3 (videos.list + videos.update, costs ~51 quota units). Requires channel-owner OAuth2. "
             "Fetches current snippet/status first so omitted parameters (title, description, tags, privacy_status, publish_at) are preserved unchanged rather than cleared. "
-            "Setting publish_at automatically forces privacy_status='private' as required by YouTube's scheduling API. Returns {videoId, studioUrl, updatedFields}."
+            "Setting publish_at automatically forces privacy_status='private' as required by YouTube's scheduling API. "
+            "When privacy_status or publish_at is set, contains_synthetic_media is required (true or false): YouTube can't read the current disclosure back and a status update may reset it. "
+            "Title and description must not contain '<' or '>' (write 'over 75%', not '>75%'). Returns {videoId, studioUrl, updatedFields}."
         ),
         "inputSchema": {
             "type": "object",
@@ -451,7 +453,7 @@ def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
                 },
                 "contains_synthetic_media": {
                     "type": "boolean",
-                    "description": "Set the YouTube altered/synthetic media disclosure (status.containsSyntheticMedia). Leave omitted to leave the existing disclosure untouched.",
+                    "description": "Set the YouTube altered/synthetic media disclosure (status.containsSyntheticMedia). Required whenever privacy_status or publish_at is set; otherwise leave omitted to leave the existing disclosure untouched.",
                 },
                 "dry_run": {
                     "type": "boolean",

@@ -36,7 +36,7 @@ Use this skill whenever the user asks to:
 2. `yt_shorts_experiment_table(handle="@mateai-c6m")`: Returns a formatted Markdown table comparing Shorts performance.
 3. `yt_video_details(video_id)`: Returns metadata and stats for a single 11-char video ID.
 4. `yt_upload_draft(video_path, spec_path, thumbnail_path, privacy_status="private", publish_at=None, auto_post_comment=false)`: Uploads a rendered video + Markdown spec (`## Title`, `## Description`, `## Tags`, `## Pinned comment`) to YouTube Studio as a draft or scheduled upload.
-5. `yt_update_video(video_id, title, description, tags, privacy_status, publish_at, thumbnail_path)`: Updates packaging or schedule of an existing video.
+5. `yt_update_video(video_id, title, description, tags, privacy_status, publish_at, thumbnail_path, contains_synthetic_media)`: Updates packaging or schedule of an existing video. When changing `privacy_status` or `publish_at`, also pass `contains_synthetic_media` (true or false); ask the user if you don't know it.
 6. `yt_post_comment(video_id, text)`: Posts a top-level comment on a video.
 
 ### TikTok tools (same server)

@@ -110,8 +110,9 @@ class TestRequestBuilders(unittest.TestCase):
         self.assertEqual(yt_studio._build_update_changes(None, None, None, None, None, None), {})
         self.assertEqual(yt_studio._build_update_changes("T", None, None, None, None, None),
                          {"snippet": {"title": "T"}})
-        self.assertEqual(yt_studio._build_update_changes(None, None, None, None, SCHEDULE, None),
-                         {"status": {"privacyStatus": "private", "publishAt": SCHEDULE}})
+        self.assertEqual(yt_studio._build_update_changes(None, None, None, None, SCHEDULE, False),
+                         {"status": {"privacyStatus": "private", "publishAt": SCHEDULE,
+                                     "containsSyntheticMedia": False}})
 
     def test_update_dry_run_preview_derives_from_builder(self):
         patch, built = _spy("_build_update_changes")

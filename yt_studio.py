@@ -46,6 +46,7 @@ from yt_common import (  # noqa: F401
     _http_get,
     _parse_iso_duration,
     _ssl_context,
+    use_utf8_stdio,
     purge_stale_youtube_cache,
 )
 from yt_manage import (  # noqa: F401
@@ -85,6 +86,7 @@ from yt_videos import (  # noqa: F401
 
 
 def main() -> None:
+    use_utf8_stdio()
     parser = argparse.ArgumentParser(
         description="MateAI YouTube Studio & Analytics Connector (CLI + Dashboard)"
     )

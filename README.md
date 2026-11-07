@@ -83,7 +83,7 @@ MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
 
 Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
 
-On Windows or Linux (untested), `/yt-setup` auto-opening the Google pages is macOS-only; use the [manual wizard](#unlock-private-youtube-studio-analytics--draft-uploads-0mo) (`python3 yt_studio.py setup`).
+On Windows, see [Windows (10/11)](#windows-1011) below. On Linux (untested), `/yt-setup` auto-opening the Google pages is macOS-only; use the [manual wizard](#unlock-private-youtube-studio-analytics--draft-uploads-0mo) (`python3 yt_studio.py setup`).
 
 ### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
@@ -96,6 +96,52 @@ On Windows or Linux (untested), `/yt-setup` auto-opening the Google pages is mac
   }
 }
 ```
+
+### Windows (10/11)
+
+The plugin runs on Windows with the same commands; only Python needs one check first.
+
+**1. Make sure `python3` works.** Claude Code and Antigravity start the server as `python3`. Install Python 3.10 or newer from [python.org/downloads](https://www.python.org/downloads/) (the **Python install manager**) or from the Microsoft Store; both add a `python3` command. Then check it in PowerShell:
+
+```powershell
+python3 --version
+```
+
+It should print `Python 3.x`. If it opens the Microsoft Store or prints "Python was not found", you have the older python.org installer (it only adds `python` and `py`) or no Python yet: install Python with the install manager above, then open **Settings > Apps > Advanced app settings > App execution aliases** and make sure the **Python** aliases are on. Open a new PowerShell window and check again.
+
+**2a. Claude Code.** Install from the marketplace, then run `/yt-setup` inside Claude Code, exactly as on macOS:
+
+```powershell
+claude plugin marketplace add mategog/mateai-youtube-mcp
+claude plugin install yt-studio@mateai-youtube-mcp
+```
+
+`/yt-setup` opens the two Google pages in your default browser and finds the downloaded `client_secret_*.json` in your `Downloads` folder (or the project folder). The plugin's data folder is `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp`.
+
+On a Claude Code older than 2.1.287 (no `/yt-setup`), run the wizard by hand:
+
+```powershell
+$env:MATEAI_YT_HOME = "$env:USERPROFILE\.claude\plugins\data\yt-studio-mateai-youtube-mcp"
+$plugin = Get-ChildItem "$env:USERPROFILE\.claude\plugins\cache\mateai-youtube-mcp\yt-studio" -Directory |
+  Sort-Object { [version]$_.Name } | Select-Object -Last 1
+python3 "$($plugin.FullName)\yt_studio.py" setup
+```
+
+The same `$env:MATEAI_YT_HOME` line works before `python3 ...\tiktok_studio.py setup`. Restart Claude Code afterwards.
+
+**2b. Antigravity.** Clone into your Antigravity plugins folder and restart Antigravity:
+
+```powershell
+git clone https://github.com/mategog/mateai-youtube-mcp.git "$env:USERPROFILE\.gemini\config\plugins\mateai-youtube"
+```
+
+For the private Studio analytics, run the wizard from that folder: `cd "$env:USERPROFILE\.gemini\config\plugins\mateai-youtube"; python3 yt_studio.py setup`.
+
+**Standalone MCP config (Option C).** Use forward slashes or doubled backslashes in JSON, for example `"args": ["C:/Users/you/mateai-youtube-mcp/mcp_server.py"]`.
+
+**What differs from macOS**
+- **Login file privacy.** macOS and Linux get `0600` file permissions. Windows has no such modes (`os.chmod` only toggles read-only), so the plugin doesn't pretend: your token and client file are protected by living in your own user profile folder, which Windows by default lets only you, SYSTEM and administrators read. Anyone with an administrator account on the PC can read them, as with any file in your profile.
+- **MateAI Studio login sharing** (reusing the desktop app's YouTube login) is macOS-only for now; on Windows the plugin uses its own login from `/yt-setup`.
 
 ### Exposed MCP Tools
 
@@ -174,7 +220,7 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 
 **3. Sign in (your browser opens).** Pick your YouTube account. On "Google hasn't verified this app" click **Advanced**, then **Go to … (unsafe)**; this is your own app. Tick **every box**, click **Allow**. Claude Code then shows **"yt-setup: connected!"** and the "YouTube: not connected" status hint disappears.
 
-`/yt-setup` copies your client file into the plugin's data folder with `600` permissions, never prints it, and never sees your Google password.
+`/yt-setup` copies your client file into the plugin's data folder with `600` permissions (on Windows: your private user profile folder, see [Windows](#windows-1011)), never prints it, and never sees your Google password.
 
 | Problem | Fix |
 | --- | --- |

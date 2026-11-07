@@ -21,8 +21,8 @@ const snapshot = JSON.stringify({
   ],
 })
 
-const stub = (on: any, files: Record<string, string>) => {
-  on('env.get', (_: unknown, e: { name: string }) => ({ value: e.name === 'HOME' ? '/home/u' : undefined }))
+const stub = (on: any, files: Record<string, string>, env: Record<string, string> = { HOME: '/home/u' }) => {
+  on('env.get', (_: unknown, e: { name: string }) => ({ value: env[e.name] }))
   on('fs.read', (_: unknown, e: { path: string }) => {
     if (!(e.path in files)) throw new Error('missing')
 
@@ -56,4 +56,15 @@ test('svg card escapes titles and shows the percentage as text', () => {
 
   expect(svg).toContain('A &amp; B &lt;C&gt;')
   expect(svg).toContain('66.7%')
+})
+
+test('Windows: reads the snapshot from the USERPROFILE data folder', async ($, on) => {
+  // The test host resolves paths POSIX-style, so the Windows profile is written as /win/u.
+  stub(on, { '/win/u/.claude/plugins/data/yt-studio-mateai-youtube-mcp/channel_snapshot.json': snapshot }, {
+    OS: 'Windows_NT', USERPROFILE: '/win/u',
+  })
+
+  const ui = await $.ui.mount({ plugin: 'yt-studio', surface: 'terminal', component: 'Pane', requestId: 'yt-dashboard', props: PANE_PROPS })
+
+  expect(await ui.find({ type: 'Text', text: '11 subscribers' })).toBeDefined()
 })

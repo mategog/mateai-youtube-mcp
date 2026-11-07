@@ -181,7 +181,8 @@ def get_oauth_credentials(
     except ImportError as exc:
         raise RuntimeError(
             "Google API libraries not installed. Run:\n"
-            "  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+            f"  python3 -m venv .venv && {Path('.venv', 'Scripts' if yt_common.IS_WINDOWS else 'bin', 'pip')} "
+            "install -r requirements.txt"
         ) from exc
 
     scopes = SCOPES_WITH_UPLOAD if upload_scope else SCOPES_READONLY

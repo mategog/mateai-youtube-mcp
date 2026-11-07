@@ -6,6 +6,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Verify MCP Server & Guard Attribution
@@ -45,3 +48,28 @@ jobs:
           echo "$OUT" | grep -q '"tiktok_channel_snapshot"'
           echo "$OUT" | grep -q '"tiktok_upload_draft"'
           echo "$OUT" | grep -q '"cross_platform_shorts_table"'
+
+  windows:
+    name: Tests & MCP handshake on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          # 3.12 on purpose: it has no os.fchmod on Windows and still defaults to cp1252 for pipes.
+          python-version: "3.12"
+
+      - name: Compile & run unit tests
+        run: |
+          python -m py_compile mcp_server.py yt_auth.py yt_common.py yt_manage.py yt_public.py yt_retention.py yt_setup.py yt_snapshot.py yt_studio.py yt_videos.py tiktok_studio.py skills/yt-chapters/chapters.py skills/yt-title-lint/title.py
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Test MCP JSON-RPC handshake
+        run: |
+          $req = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' + "`n" + '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' + "`n"
+          $out = ($req | python mcp_server.py) -join "`n"
+          foreach ($name in 'mateai-youtube-mcp', 'yt_channel_snapshot', 'yt_upload_draft', 'tiktok_channel_snapshot', 'tiktok_upload_draft', 'cross_platform_shorts_table') {
+            if ($out -notmatch [regex]::Escape("""$name""")) { throw "MCP handshake is missing $name" }
+          }

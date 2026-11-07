@@ -1,4 +1,5 @@
 import hashlib
+import os
 import re
 import tempfile
 import unittest
@@ -101,7 +102,8 @@ class TestTikTokPureLogic(unittest.TestCase):
             with patch("tiktok_studio._post_form", return_value={"access_token": "new_tok", "refresh_token": "ref456", "expires_in": 86400, "refresh_expires_in": 31536000}):
                 token = get_valid_tiktok_token(token_file=tok_p, client_file=cli_p)
             self.assertEqual(token, "new_tok")
-            self.assertEqual(tok_p.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows has no POSIX modes
+                self.assertEqual(tok_p.stat().st_mode & 0o777, 0o600)
 
     def test_fetch_tiktok_snapshot_maps_user_info_and_video_list_fields(self):
         from unittest.mock import patch
@@ -221,7 +223,8 @@ class TestTikTokPureLogic(unittest.TestCase):
             p.write_text("old", encoding="utf-8")
             os.chmod(p, 0o644)
             _write_secret_file(p, '{"access_token":"new"}')
-            self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows has no POSIX modes
+                self.assertEqual(p.stat().st_mode & 0o777, 0o600)
             self.assertEqual(p.read_text(encoding="utf-8"), '{"access_token":"new"}')
 
     def _history_snap(self, views: int) -> dict:
@@ -246,7 +249,8 @@ class TestTikTokPureLogic(unittest.TestCase):
             self.assertRegex(rows[0]["capturedAt"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
             self.assertEqual(rows[0]["followers"], 450)
             self.assertEqual(rows[0]["videos"][0], {"id": "743001", "views": 4200, "likes": 310, "comments": 28, "shares": 45})
-            self.assertEqual(p.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows has no POSIX modes
+                self.assertEqual(p.stat().st_mode & 0o777, 0o600)
 
     def test_append_tiktok_history_tolerates_sparse_snapshot(self):
         import json

@@ -16,19 +16,33 @@ const CONSOLE_PAGES = [
   'https://console.cloud.google.com/auth/audience',
 ]
 
-type Paths = { home: string; data: string; secret: string; token: string; expired: string; venvPython: string }
+type Paths = {
+  isWindows: boolean
+  home: string
+  data: string
+  secret: string
+  token: string
+  expired: string
+  venvPython: string
+}
+
+// Windows sets OS=Windows_NT for every process, and has USERPROFILE where macOS/Linux have HOME.
+const isWindowsEnv = async ($: Api): Promise<boolean> => (await $.env.get('OS')) === 'Windows_NT'
 
 const paths = async ($: Api): Promise<Paths> => {
-  const home = (await $.env.get('HOME')) ?? ''
+  const isWindows = await isWindowsEnv($)
+  const home = (isWindows ? (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) : await $.env.get('HOME')) ?? ''
   const data = (await $.env.get('MATEAI_YT_HOME')) ?? `${home}/.claude/plugins/data/${DATA_NAME}`
 
   return {
+    isWindows,
     home,
     data,
     secret: `${data}/google_auth_secret/client_secret.json`,
     token: `${data}/.tokens/token.json`,
     expired: `${data}/.tokens/expired`,
-    venvPython: `${data}/.venv/bin/python`,
+    // A Windows venv keeps its interpreter in Scripts\python.exe, not bin/python.
+    venvPython: isWindows ? `${data}/.venv/Scripts/python.exe` : `${data}/.venv/bin/python`,
   }
 }
 
@@ -63,9 +77,36 @@ const pluginRoot = async ($: Api, p: Paths): Promise<string | undefined> => {
   return newest === undefined ? undefined : `${base}/${newest}`
 }
 
+const SKIP_DIRS = new Set(['node_modules', '.venv'])
+const isSecretName = (name: string) => /^client_secret.*\.json$/.test(name)
+
+// Windows has no POSIX `find` (its find.exe searches text), so walk the folders with $.fs.list,
+// to the same depth as `find -maxdepth 5`.
+const walkForSecret = async ($: Api, dir: string, depth: number): Promise<string | undefined> => {
+  const entries = await $.fs.list(dir).catch(() => [])
+  const file = entries.find(e => e.kind === 'file' && isSecretName(e.name))
+  if (file !== undefined) return `${dir}/${file.name}`
+  if (depth <= 1) return undefined
+  for (const e of entries) {
+    if (e.kind !== 'dir' || SKIP_DIRS.has(e.name)) continue
+    const found = await walkForSecret($, `${dir}/${e.name}`, depth - 1)
+    if (found !== undefined) return found
+  }
+
+  return undefined
+}
+
 // Looks for a Desktop-app client_secret*.json in the data folder, this project and Downloads.
 const findSecret = async ($: Api, p: Paths, cwd: string): Promise<string | undefined> => {
   if (await $.fs.exists(p.secret)) return p.secret
+  if (p.isWindows) {
+    for (const root of [cwd, `${p.home}/Downloads`]) {
+      const found = await walkForSecret($, root, 5)
+      if (found !== undefined) return found
+    }
+
+    return undefined
+  }
   const found = await $.process.run(
     [
       'find', cwd, `${p.home}/Downloads`, '-maxdepth', '5',
@@ -148,7 +189,9 @@ const registerSetup: Register = on => {
 
     const secret = await findSecret($, p, projectDir)
     if (secret === undefined) {
-      for (const url of CONSOLE_PAGES) await $.process.run(['open', url]).catch(() => undefined)
+      // `open` is macOS; on Windows, url.dll opens the default browser without a shell to quote for.
+      const opener = p.isWindows ? ['rundll32', 'url.dll,FileProtocolHandler'] : ['open']
+      for (const url of CONSOLE_PAGES) await $.process.run([...opener, url]).catch(() => undefined)
 
       return {
         text: [
@@ -172,13 +215,14 @@ const registerSetup: Register = on => {
         return { text: `Found ${secret} but it is a "${kind}" client. Create a Desktop app client instead.` }
       }
       await $.fs.write(p.secret, await $.fs.read(secret))
-      await $.process.run(['chmod', '600', p.secret])
+      // Windows has no chmod; the data folder in the user's profile is already private to that user.
+      if (!p.isWindows) await $.process.run(['chmod', '600', p.secret])
     }
 
     // The login waits for the person in the browser, so it runs on after this answer.
     void connect($, p, root, state)
 
-    return { text: `Found your Google client file. Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.${secret === p.secret ? '' : `\n(Copied ${secret} into the plugin folder, permissions 600.)`}` }
+    return { text: `Found your Google client file. Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.${secret === p.secret ? '' : `\n(Copied ${secret} into the plugin folder, ${p.isWindows ? 'private to your Windows user' : 'permissions 600'}.)`}` }
   })
 }
 

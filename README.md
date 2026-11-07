@@ -4,7 +4,7 @@
 [![mategog/mateai-youtube-mcp MCP server](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp)
 [![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
 [![Sponsor on GitHub](https://img.shields.io/badge/Sponsor%20on%20GitHub-mategog-EA4AAA?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/mategog)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epuplanner)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/mateai)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 
 ![Dry run, then schedule: an animated replay of real plugin output](assets/demo.gif)
@@ -285,7 +285,7 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 If this saved you from paying for a monthly "Creator OS" subscription:
 - **Sponsor on GitHub:** [github.com/sponsors/mategog](https://github.com/sponsors/mategog)
 - **Subscribe on YouTube:** [MateAI (@mateai-c6m)](https://www.youtube.com/@mateai-c6m) — real AI build-logs, measured costs, no hype.
-- **Buy Mate a Coffee:** [buymeacoffee.com/epuplanner](https://buymeacoffee.com/epuplanner)
+- **Buy Mate a Coffee:** [buymeacoffee.com/mateai](https://buymeacoffee.com/mateai)
 
 ## License & Anti-Resale Protection
 

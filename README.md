@@ -316,11 +316,11 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 **The `/yt-setup` command** (a Claude Code mod in `hooks/`):
 - Looks for a `client_secret*.json` in the plugin data folder, your current project and `~/Downloads` (up to 5 folders deep), and copies a Desktop-app client into the data folder with `600` permissions. It never prints the file.
 - Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
-- Opens two Google Cloud pages (macOS `open`) and starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
+- Opens two Google Cloud pages (macOS `open`, Windows `rundll32 url.dll,FileProtocolHandler`) and starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
 - Reads your saved token only to check which permissions it holds.
-- Works with macOS paths; on Windows use the manual wizard below.
+- Works on macOS and Windows; on Linux (untested) use the manual wizard below.
 
-**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
+**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder, see [Windows](#windows-1011)). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
 
 **With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
 

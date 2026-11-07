@@ -349,7 +349,7 @@ class TestGrantedScopes(unittest.TestCase):
         mods, flow = self._consent_returns(self._new_creds(self.UPLOAD, self.UPLOAD))
         mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
         with mock.patch.dict(os.environ, {"MATEAI_LAUNCHER": "desktop"}):
-            with self.assertRaisesRegex(RuntimeError, "Open MateAI Desktop, disconnect YouTube"):
+            with self.assertRaisesRegex(RuntimeError, "Open MateAI Studio, disconnect YouTube"):
                 self._call(mods, upload_scope=True)
         flow.run_local_server.assert_not_called()
 
@@ -378,7 +378,7 @@ class TestGrantedScopes(unittest.TestCase):
 
 
 class TestDesktopSignInMessages(unittest.TestCase):
-    """Launched by MateAI Desktop (MATEAI_LAUNCHER=desktop), the fix is the app's Connect YouTube button."""
+    """Launched by MateAI Studio (MATEAI_LAUNCHER=desktop), the fix is the app's Connect YouTube button."""
 
     def _refresh_error(self, launcher):
         creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
@@ -405,7 +405,7 @@ class TestDesktopSignInMessages(unittest.TestCase):
 
     def test_expired_login_points_desktop_users_to_the_app(self):
         msg = self._refresh_error("desktop")
-        self.assertIn("open MateAI Desktop and click Connect YouTube", msg)
+        self.assertIn("open MateAI Studio and click Connect YouTube", msg)
         self.assertIn("7 days", msg)
         self.assertNotIn("/yt-setup", msg)
         self.assertNotIn("yt_studio.py", msg)
@@ -413,17 +413,17 @@ class TestDesktopSignInMessages(unittest.TestCase):
     def test_expired_login_message_unchanged_for_plugin_users(self):
         msg = self._refresh_error("")
         self.assertIn("type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`.", msg)
-        self.assertNotIn("MateAI Desktop", msg)
+        self.assertNotIn("MateAI Studio", msg)
 
     def test_no_login_points_desktop_users_to_the_app(self):
         msg = self._no_login_error("desktop")
-        self.assertIn("Open MateAI Desktop and click Connect YouTube", msg)
+        self.assertIn("Open MateAI Studio and click Connect YouTube", msg)
         self.assertNotIn("client_secret", msg)
 
     def test_no_login_message_unchanged_for_plugin_users(self):
         msg = self._no_login_error("")
         self.assertIn("client_secret.json", msg)
-        self.assertNotIn("MateAI Desktop", msg)
+        self.assertNotIn("MateAI Studio", msg)
 
 
 if __name__ == "__main__":

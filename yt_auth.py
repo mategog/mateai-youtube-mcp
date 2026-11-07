@@ -102,7 +102,7 @@ def _saved_scopes(token_file: Path) -> list[str]:
 
 
 def _launched_by_desktop() -> bool:
-    """MateAI Desktop sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
+    """MateAI Studio sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
     return os.environ.get("MATEAI_LAUNCHER", "").strip().lower() == "desktop"
 
 
@@ -169,7 +169,7 @@ def _expired_marker() -> Path:
 
 def _sign_in_again() -> str:
     return (
-        "Sign in again: open MateAI Desktop and click Connect YouTube."
+        "Sign in again: open MateAI Studio and click Connect YouTube."
         if _launched_by_desktop()
         else "Sign in again: type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`."
     )
@@ -257,7 +257,7 @@ def get_oauth_credentials(
         if not covers_request and _launched_by_desktop():
             raise RuntimeError(
                 "Your YouTube login doesn't allow this yet (it was connected for reading only). "
-                "Open MateAI Desktop, disconnect YouTube and connect again with managing videos allowed."
+                "Open MateAI Studio, disconnect YouTube and connect again with managing videos allowed."
             )
         # A refresh can't add scopes the user never granted, so a missing scope always means consent.
         if not force_reauth and creds and creds.expired and covers_request and creds.refresh_token:
@@ -278,7 +278,7 @@ def get_oauth_credentials(
             elif client_secret_path.exists():
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
             elif _launched_by_desktop():
-                raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Desktop and click Connect YouTube.")
+                raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Studio and click Connect YouTube.")
             else:
                 raise FileNotFoundError(
                     f"Missing OAuth credentials at {client_secret_path}.\n"

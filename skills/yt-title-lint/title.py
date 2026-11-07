@@ -69,7 +69,7 @@ def main():
     if "--title" in a:
         rows = [check(a[a.index("--title") + 1], thumb)]
     elif a and os.path.exists(a[0]):
-        rows = [check(l, thumb) for l in open(a[0]).read().splitlines() if l.strip()]
+        rows = [check(l, thumb) for l in open(a[0], encoding="utf-8").read().splitlines() if l.strip()]
     else:
         print(__doc__); sys.exit(1)
     rows.sort(key=lambda r: -r["score"])

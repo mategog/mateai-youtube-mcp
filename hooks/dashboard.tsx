@@ -23,6 +23,14 @@ const num = (n: number | null, suffix = '') => (n === null ? '–' : `${n}${suff
 
 const BAND_VIDEOS = 5
 
+// The plugin data folder (override: MATEAI_YT_HOME). Windows has USERPROFILE (and OS=Windows_NT) instead of HOME.
+const dataDir = async ($: { env: { get: (name: string) => Promise<string | undefined> } }) => {
+  const isWindows = (await $.env.get('OS')) === 'Windows_NT'
+  const home = (isWindows ? (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) : await $.env.get('HOME')) ?? ''
+
+  return (await $.env.get('MATEAI_YT_HOME')) ?? `${home}/.claude/plugins/data/${DATA_NAME}`
+}
+
 // register.tsx registers this command in its session.start hook: one module can't hold two unmatched ones.
 export const dashboardCommand = { name: 'yt-dashboard', description: 'Open the YouTube channel dashboard pane' }
 
@@ -49,8 +57,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || !(await read($, bandOn))) return next(e)
 
-    const home = (await $.env.get('HOME')) ?? ''
-    const dir = (await $.env.get('MATEAI_YT_HOME')) ?? `${home}/.claude/plugins/data/${DATA_NAME}`
+    const dir = await dataDir($)
 
     let snap: Snapshot
     try {
@@ -102,8 +109,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     await read($, refreshed)
 
-    const home = (await $.env.get('HOME')) ?? ''
-    const dir = (await $.env.get('MATEAI_YT_HOME')) ?? `${home}/.claude/plugins/data/${DATA_NAME}`
+    const dir = await dataDir($)
     const file = `${dir}/channel_snapshot.json`
 
     let snap: Snapshot

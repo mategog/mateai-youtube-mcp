@@ -138,3 +138,73 @@ test('a stale marker without a token folder does not trap the user', async ($, o
 
   expect(logins.length).toBe(1)
 })
+
+// Windows: USERPROFILE instead of HOME, no `find`/`open`/`chmod`, and the venv interpreter is
+// Scripts\python.exe. The test host resolves paths POSIX-style, so the profile is written as /win/u.
+const WIN_HOME = '/win/u'
+const WIN_DATA = `${WIN_HOME}/.claude/plugins/data/yt-studio-mateai-youtube-mcp`
+const WIN_PLUGIN = `${WIN_HOME}/.claude/plugins/cache/mateai-youtube-mcp/yt-studio`
+
+const stubWindows = (on: any, files: Record<string, string>, dirs: Record<string, Array<{ name: string; kind: string }>>) => {
+  on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
+  on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
+  on('env.get', (_: unknown, e: { name: string }) => ({
+    value: ({ OS: 'Windows_NT', USERPROFILE: WIN_HOME, HOME: '/wrong/home' } as Record<string, string>)[e.name],
+  }))
+  on('fs.exists', (_: unknown, e: { path: string }) => ({ value: e.path in files || e.path in dirs }))
+  on('fs.read', (_: unknown, e: { path: string }) => ({ value: files[e.path] }))
+  on('fs.write', (_: unknown, e: { path: string; text: string }) => {
+    files[e.path] = e.text
+
+    return { value: undefined }
+  })
+  on('fs.list', (_: unknown, e: { path: string }) => ({
+    value: (dirs[e.path] ?? []).map(d => ({ ...d, size: 0, mtimeMs: 0, isLink: false })),
+  }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+}
+
+test('Windows: opens the Google pages with url.dll, never find or open', async ($, on) => {
+  stubWindows(on, {}, { [WIN_PLUGIN]: [{ name: '1.0.5', kind: 'dir' }] })
+  const argvs: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    argvs.push(e.argv)
+
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: '' })
+
+  expect(out.text).toMatch(/Download JSON/)
+  expect(argvs.map(a => a[0])).toEqual(['rundll32', 'rundll32'])
+  expect(argvs[0][1]).toBe('url.dll,FileProtocolHandler')
+})
+
+test('Windows: finds the client file in Downloads, copies it without chmod, signs in with Scripts\\python.exe', async ($, on) => {
+  const files: Record<string, string> = {
+    [`${WIN_HOME}/Downloads/client_secret_123.json`]: '{"installed":{}}',
+    [`${WIN_DATA}/.venv/Scripts/python.exe`]: '',
+  }
+  stubWindows(on, files, {
+    [WIN_PLUGIN]: [{ name: '1.0.5', kind: 'dir' }],
+    '/proj': [{ name: 'node_modules', kind: 'dir' }],
+    [`${WIN_HOME}/Downloads`]: [{ name: 'client_secret_123.json', kind: 'file' }],
+  })
+  const argvs: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    argvs.push(e.argv)
+
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: '' })
+  for (let i = 0; i < 50 && argvs.length === 0; i++) await new Promise(r => setTimeout(r, 10))
+
+  expect(out.text).toMatch(/private to your Windows user/)
+  expect(files[`${WIN_DATA}/google_auth_secret/client_secret.json`]).toBe('{"installed":{}}')
+  expect(argvs.some(a => a[0] === 'chmod' || a[0] === 'find')).toBe(false)
+  expect(argvs[0][0]).toBe(`${WIN_DATA}/.venv/Scripts/python.exe`)
+})

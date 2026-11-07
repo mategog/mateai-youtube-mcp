@@ -21,11 +21,41 @@ HERE = Path(__file__).resolve().parent
 # (the Claude Code plugin points it at ${CLAUDE_PLUGIN_DATA}), else next to this file.
 STATE_DIR = Path(os.environ.get("MATEAI_YT_HOME") or HERE).expanduser()
 
+IS_WINDOWS = os.name == "nt"
+# Windows' os.chmod only toggles the read-only flag, so a 0600 mode means nothing there. The files sit
+# in the user's profile folder, whose default ACL already limits them to that user (plus SYSTEM/Admins).
+PRIVATE_FILE_NOTE = "private to your Windows user profile" if IS_WINDOWS else "mode 0600"
+
+
+def venv_python(venv: Path | None = None) -> Path:
+    """The venv's interpreter: .venv/Scripts/python.exe on Windows, .venv/bin/python elsewhere."""
+    venv = venv or STATE_DIR / ".venv"
+    return venv / "Scripts" / "python.exe" if IS_WINDOWS else venv / "bin" / "python"
+
+
+def venv_site_packages(venv: Path) -> list[Path]:
+    """Windows venvs use Lib/site-packages; POSIX venvs use lib/pythonX.Y/site-packages."""
+    if IS_WINDOWS:
+        sp = venv / "Lib" / "site-packages"
+        return [sp] if sp.is_dir() else []
+    return sorted((venv / "lib").glob("python*/site-packages"))
+
 
 def add_venv_to_path() -> None:
-    for sp in sorted((STATE_DIR / ".venv" / "lib").glob("python*/site-packages")):
+    for sp in venv_site_packages(STATE_DIR / ".venv"):
         if str(sp) not in sys.path:
             sys.path.insert(0, str(sp))
+
+
+def use_utf8_stdio() -> None:
+    """Read and write UTF-8 on stdin/stdout/stderr, with plain \\n line endings.
+
+    On Windows, Python before 3.15 uses the ANSI code page (often cp1252) for piped streams, which
+    mangles Hungarian titles arriving over MCP stdio and crashes on the emoji the CLI prints.
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", newline="\n" if stream is not sys.stdin else None)
 
 
 add_venv_to_path()

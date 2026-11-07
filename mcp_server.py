@@ -1090,6 +1090,7 @@ _EMPTY_LISTS = {
 
 
 def main() -> None:
+    yt_common.use_utf8_stdio()
     while True:
         msg = _PENDING.popleft() if _PENDING else _read_message()
         if msg is None:

@@ -282,7 +282,9 @@ def _write_secret_file(path: Path, content: str) -> None:
     fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
     try:
         # O_CREAT's mode is ignored for an existing file, so tighten it before writing.
-        os.fchmod(fd, 0o600)
+        # Windows has no fchmod before Python 3.13 and no POSIX modes at all (see PRIVATE_FILE_NOTE).
+        if not yt_common.IS_WINDOWS:
+            os.fchmod(fd, 0o600)
     except BaseException:
         os.close(fd)
         raise
@@ -485,7 +487,7 @@ def append_tiktok_history(snapshot: dict[str, Any], history_file: Path = TIKTOK_
             ],
         }
         history_file.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(history_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        fd = os.open(history_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o600)
         try:
             os.write(fd, (json.dumps(row, separators=(",", ":")) + "\n").encode("utf-8"))
         finally:
@@ -619,10 +621,11 @@ def run_tiktok_setup_wizard(
     if captured.get("state") != state or not captured.get("code"):
         raise RuntimeError("TikTok OAuth callback failed or state mismatch.")
     exchange_code_for_token(captured["code"], verifier, client_file=client_file, token_file=token_file)
-    print(f"✓ TikTok OAuth token saved to {token_file} (mode 0600)")
+    print(f"✓ TikTok OAuth token saved to {token_file} ({yt_common.PRIVATE_FILE_NOTE})")
 
 
 def main() -> None:
+    yt_common.use_utf8_stdio()
     parser = argparse.ArgumentParser(description="MateAI Official TikTok OAuth Connector")
     sub = parser.add_subparsers(dest="cmd")
 

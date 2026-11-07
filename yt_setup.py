@@ -114,11 +114,11 @@ def run_interactive_setup_wizard() -> None:
         return
 
     # Step 1: Ensure .venv and Google API client packages exist
-    venv_py = yt_common.STATE_DIR / ".venv" / "bin" / "python"
+    venv_py = yt_common.venv_python()
     if not venv_py.exists():
         print("\n[1/4] Creating local Python virtualenv (.venv) and installing Google API SDK...")
         subprocess.run([sys.executable, "-m", "venv", str(yt_common.STATE_DIR / ".venv")], check=True)
-        subprocess.run([str(yt_common.STATE_DIR / ".venv" / "bin" / "pip"), "install", "-q", "-r", str(yt_common.HERE / "requirements.txt")], check=True)
+        subprocess.run([str(venv_py), "-m", "pip", "install", "-q", "-r", str(yt_common.HERE / "requirements.txt")], check=True)
         yt_common.add_venv_to_path()
     else:
         print("\n[1/4] Python virtualenv (.venv) is ready.")
@@ -176,7 +176,7 @@ def run_interactive_setup_wizard() -> None:
             shutil.copy2(found_file, target)
         os.chmod(target, 0o600)
         secret_path = target
-        print(f"      ✓ Auto-imported {found_file} -> {target} (mode 0600)")
+        print(f"      ✓ Auto-imported {found_file} -> {target} ({yt_common.PRIVATE_FILE_NOTE})")
     else:
         print(f"\n[3/4] Found existing OAuth client secret: {secret_path.name}")
 

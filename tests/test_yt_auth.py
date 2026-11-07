@@ -96,6 +96,7 @@ class TestExpiredMarker(unittest.TestCase):
             self._refresh_fails(token)
             self.assertTrue((token.parent / "expired").exists())
 
+    @unittest.skipIf(os.name == "nt", "chmod cannot make a folder read-only on Windows")
     def test_marker_that_cannot_be_written_does_not_hide_the_friendly_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / ".tokens" / "token.json"

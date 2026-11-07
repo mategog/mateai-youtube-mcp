@@ -12,6 +12,8 @@ import yt_auth
 import yt_studio
 
 os.environ["MATEAI_DESKTOP_LOGIN"] = "off"  # never read the real MateAI Studio login in tests
+# A token file as earlier versions saved it; its scopes cover every call, so expiry means refresh.
+FULL_TOKEN = json.dumps({"refresh_token": "r", "scopes": yt_auth.SCOPES_WITH_UPLOAD})
 
 
 class FakeRefreshError(Exception):
@@ -40,14 +42,14 @@ class TestExpiredLogin(unittest.TestCase):
     def _run(self, creds):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
-            token.write_text("{}", encoding="utf-8")
+            token.write_text(FULL_TOKEN, encoding="utf-8")
             with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, _fake_google_modules(creds)):
                 result = yt_studio.get_oauth_credentials()
             return result, token.exists()
 
     def test_refresh_failure_says_how_to_sign_in_again(self):
-        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
         creds.refresh.side_effect = FakeRefreshError("invalid_grant: Token has been expired or revoked.")
         with self.assertRaises(RuntimeError) as ctx:
             self._run(creds)
@@ -57,11 +59,11 @@ class TestExpiredLogin(unittest.TestCase):
         self.assertNotIn("invalid_grant", msg.split("\n")[0])
 
     def test_failed_refresh_keeps_the_token_file(self):
-        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
         creds.refresh.side_effect = FakeRefreshError("invalid_grant")
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
-            token.write_text("{}", encoding="utf-8")
+            token.write_text(FULL_TOKEN, encoding="utf-8")
             with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, _fake_google_modules(creds)):
                 with self.assertRaises(RuntimeError):
@@ -69,7 +71,7 @@ class TestExpiredLogin(unittest.TestCase):
             self.assertTrue(token.exists())
 
     def test_successful_refresh_still_returns_credentials(self):
-        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
         creds.to_json.return_value = "{}"
         result, _ = self._run(creds)
         self.assertIs(result, creds)
@@ -80,7 +82,7 @@ class TestExpiredMarker(unittest.TestCase):
     """A failed refresh leaves `.tokens/expired` so /yt-setup knows the saved login is dead."""
 
     def _refresh_fails(self, token):
-        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
         creds.refresh.side_effect = FakeRefreshError("invalid_grant")
         with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                 mock.patch.dict(sys.modules, _fake_google_modules(creds)):
@@ -92,7 +94,7 @@ class TestExpiredMarker(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / ".tokens" / "token.json"
             token.parent.mkdir()
-            token.write_text("{}", encoding="utf-8")
+            token.write_text(FULL_TOKEN, encoding="utf-8")
             self._refresh_fails(token)
             self.assertTrue((token.parent / "expired").exists())
 
@@ -101,7 +103,7 @@ class TestExpiredMarker(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / ".tokens" / "token.json"
             token.parent.mkdir()
-            token.write_text("{}", encoding="utf-8")
+            token.write_text(FULL_TOKEN, encoding="utf-8")
             token.parent.chmod(0o500)
             try:
                 msg = self._refresh_fails(token)
@@ -133,7 +135,7 @@ class TestExpiredMarker(unittest.TestCase):
             (token.parent / "expired").write_text("", encoding="utf-8")
             secret = Path(tmp) / "client_secret.json"
             secret.write_text("{}", encoding="utf-8")
-            new_creds = mock.Mock()
+            new_creds = mock.Mock(granted_scopes=None)
             new_creds.to_json.return_value = "{}"
             flow = mock.Mock()
             flow.run_local_server.return_value = new_creds
@@ -152,7 +154,7 @@ class TestExpiredMarker(unittest.TestCase):
             token = Path(tmp) / ".tokens" / "token.json"  # the folder (and its marker) is gone
             secret = Path(tmp) / "client_secret.json"
             secret.write_text("{}", encoding="utf-8")
-            new_creds = mock.Mock()
+            new_creds = mock.Mock(granted_scopes=None)
             new_creds.to_json.return_value = "{}"
             flow = mock.Mock()
             flow.run_local_server.return_value = new_creds
@@ -176,6 +178,7 @@ class FakeScopedCredentials:
         self.refresh_token = info.get("refresh_token")
         self.expiry = dt.datetime.fromisoformat(info["expiry"]) if info.get("expiry") else None
         self.scopes = scopes if scopes is not None else info.get("scopes")
+        self.granted_scopes = None  # set from Google's token response, like the real class
         self.refreshes = 0
 
     @classmethod
@@ -193,6 +196,7 @@ class FakeScopedCredentials:
     def refresh(self, request):
         self.refreshes += 1
         self.token = "FAKE-TOKEN-FOR " + " ".join(sorted(self.scopes))
+        self.granted_scopes = list(self.scopes)
         self.expiry = dt.datetime.now() + dt.timedelta(hours=1)
 
     def to_json(self):
@@ -236,16 +240,28 @@ class TestScopesSurviveReadCalls(unittest.TestCase):
             for scope in self.UPLOAD:
                 self.assertIn(scope, creds.token)
 
-    def test_upload_call_does_not_reuse_a_cached_readonly_token(self):
+    def test_upload_call_on_a_readonly_login_asks_for_consent_instead_of_refreshing(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self._write(tmp, self.READ, "FAKE-READONLY", hours_left=1)
-            creds = self._call(path, upload_scope=True)
-            self.assertEqual(creds.refreshes, 1)
-            for scope in self.UPLOAD:
-                self.assertIn(scope, creds.token)
+            secret = Path(tmp) / "client_secret.json"
+            secret.write_text("{}", encoding="utf-8")
+            granted = FakeScopedCredentials({"token": "NEW", "refresh_token": "NEW-R",
+                                             "expiry": dt.datetime.now().isoformat()}, self.UPLOAD)
+            granted.granted_scopes = list(self.UPLOAD)
+            flow = mock.Mock()
+            flow.run_local_server.return_value = granted
+            from_file = mock.Mock(return_value=flow)
+            mods = _fake_google_modules(None)
+            mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
+            mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
+                from_client_secrets_file=from_file)
+            with mock.patch.object(yt_auth, "TOKEN_FILE", path), mock.patch.dict(sys.modules, mods):
+                creds = yt_auth.get_oauth_credentials(secret, upload_scope=True)
+            self.assertIs(creds, granted)
+            self.assertEqual(from_file.call_args.args[1], self.UPLOAD)
             saved = self._saved(path)
             self.assertEqual(set(saved["scopes"]), set(self.UPLOAD))
-            self.assertEqual(saved["refresh_token"], "FAKE-REFRESH")
+            self.assertEqual(saved["refresh_token"], "NEW-R")
 
     def test_cached_token_that_covers_the_request_is_reused(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,15 +273,119 @@ class TestScopesSurviveReadCalls(unittest.TestCase):
             self.assertEqual(set(self._saved(path)["scopes"]), set(self.UPLOAD))
 
 
+class TestGrantedScopes(unittest.TestCase):
+    """The saved scopes are the ones Google granted, never just the ones we asked for."""
+    READ = yt_auth.SCOPES_READONLY
+    UPLOAD = yt_auth.SCOPES_WITH_UPLOAD
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.token = self.dir / ".tokens" / "token.json"
+        self.secret = self.dir / "client_secret.json"
+        self.secret.write_text("{}", encoding="utf-8")
+
+    def _consent_returns(self, creds=None, error=None):
+        flow = mock.Mock()
+        flow.run_local_server.return_value = creds
+        flow.run_local_server.side_effect = error
+        mods = _fake_google_modules(None)
+        mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
+            from_client_secrets_file=mock.Mock(return_value=flow))
+        return mods, flow
+
+    def _call(self, mods, **kw):
+        with mock.patch.object(yt_auth, "TOKEN_FILE", self.token), mock.patch.dict(sys.modules, mods):
+            return yt_auth.get_oauth_credentials(self.secret, **kw)
+
+    def _new_creds(self, requested, granted):
+        creds = mock.Mock(granted_scopes=granted)
+        creds.to_json.return_value = json.dumps({"refresh_token": "r", "scopes": requested})
+        return creds
+
+    def test_refresh_saves_what_google_granted_not_what_the_file_claimed(self):
+        self.token.parent.mkdir()
+        self.token.write_text(json.dumps({
+            "token": "OLD", "refresh_token": "r", "scopes": self.UPLOAD,
+            "expiry": (dt.datetime.now() - dt.timedelta(hours=1)).isoformat()}), encoding="utf-8")
+        mods = _fake_google_modules(None)
+        mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
+        with mock.patch.object(FakeScopedCredentials, "refresh",
+                               lambda self, req: setattr(self, "granted_scopes", list(TestGrantedScopes.READ))):
+            self._call(mods)
+        self.assertEqual(json.loads(self.token.read_text(encoding="utf-8"))["scopes"], self.READ)
+
+    def test_keyring_saves_granted_scopes_too(self):
+        creds = self._new_creds(self.UPLOAD, self.READ)
+        mods, _ = self._consent_returns(creds)
+        with mock.patch.dict(os.environ, {"MATEAI_TOKEN_BACKEND": "keyring"}), \
+                mock.patch.object(yt_auth, "_keyring_get", return_value=None), \
+                mock.patch.object(yt_auth, "_keyring_set") as saved:
+            self._call(mods, force_reauth=True)
+        self.assertEqual(json.loads(saved.call_args.args[0])["scopes"], self.READ)
+
+    def test_unticked_manage_box_gives_a_clear_error_and_saves_only_what_was_granted(self):
+        mods, _ = self._consent_returns(self._new_creds(self.UPLOAD, self.READ))
+        with self.assertRaises(RuntimeError) as ctx:
+            self._call(mods, upload_scope=True, force_reauth=True)
+        self.assertIn("'Manage your YouTube account'", str(ctx.exception))
+        self.assertIn("unticked", str(ctx.exception))
+        self.assertEqual(json.loads(self.token.read_text(encoding="utf-8"))["scopes"], self.READ)
+
+    def test_oauthlib_scope_changed_warning_becomes_the_same_clear_error(self):
+        warning = Warning('Scope has changed from "a" to "b".')
+        warning.new_scope = list(self.READ)
+        mods, _ = self._consent_returns(error=warning)
+        with self.assertRaises(RuntimeError) as ctx:
+            self._call(mods, upload_scope=True, force_reauth=True)
+        self.assertIn("'Manage your YouTube account'", str(ctx.exception))
+        self.assertFalse(self.token.exists())
+
+    def test_desktop_launch_with_a_readonly_login_points_to_the_app_and_opens_no_browser(self):
+        self.token.parent.mkdir()
+        self.token.write_text(json.dumps({"token": "t", "refresh_token": "r", "scopes": self.READ}),
+                              encoding="utf-8")
+        mods, flow = self._consent_returns(self._new_creds(self.UPLOAD, self.UPLOAD))
+        mods["google.oauth2.credentials"].Credentials = FakeScopedCredentials
+        with mock.patch.dict(os.environ, {"MATEAI_LAUNCHER": "desktop"}):
+            with self.assertRaisesRegex(RuntimeError, "Open MateAI Desktop, disconnect YouTube"):
+                self._call(mods, upload_scope=True)
+        flow.run_local_server.assert_not_called()
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_token_folder_is_0700_and_file_is_0600(self):
+        mods, _ = self._consent_returns(self._new_creds(self.READ, None))
+        old = os.umask(0o022)
+        try:
+            self._call(mods, force_reauth=True)
+        finally:
+            os.umask(old)
+        self.assertEqual(self.token.parent.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.token.stat().st_mode & 0o777, 0o600)
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_token_file_is_never_created_world_readable(self):
+        modes = []
+        real_open = os.open
+        def spy(path, flags, mode=0o777, *a, **k):
+            modes.append(mode)
+            return real_open(path, flags, mode, *a, **k)
+        mods, _ = self._consent_returns(self._new_creds(self.READ, None))
+        with mock.patch.object(yt_auth.os, "open", spy):
+            self._call(mods, force_reauth=True)
+        self.assertEqual(modes, [0o600])
+
+
 class TestDesktopSignInMessages(unittest.TestCase):
     """Launched by MateAI Desktop (MATEAI_LAUNCHER=desktop), the fix is the app's Connect YouTube button."""
 
     def _refresh_error(self, launcher):
-        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
         creds.refresh.side_effect = FakeRefreshError("invalid_grant")
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / "token.json"
-            token.write_text("{}", encoding="utf-8")
+            token.write_text(FULL_TOKEN, encoding="utf-8")
             with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
                     mock.patch.dict(sys.modules, _fake_google_modules(creds)), \
                     mock.patch.dict(os.environ, {"MATEAI_LAUNCHER": launcher}):

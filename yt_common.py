@@ -12,6 +12,7 @@ import os
 import re
 import ssl
 import sys
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any, TypedDict
@@ -63,6 +64,20 @@ add_venv_to_path()
 CACHE_FILE = STATE_DIR / "channel_snapshot.json"
 REPORT_FILE = STATE_DIR / "report.html"
 TEMPLATE_FILE = HERE / "report_template.html"
+
+# YouTube API Services Developer Policies: stored API data must be refreshed or deleted within 30 days.
+CACHE_MAX_AGE_DAYS = 30
+
+
+def purge_stale_youtube_cache(now: float | None = None) -> None:
+    """Delete the cached snapshot and report once they are older than CACHE_MAX_AGE_DAYS."""
+    cutoff = (time.time() if now is None else now) - CACHE_MAX_AGE_DAYS * 24 * 3600
+    for path in (CACHE_FILE, REPORT_FILE):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:  # missing, or locked by another program (Windows); try again next start
+            pass
 
 DEFAULT_HANDLE = "@mateai-c6m"
 AUTHOR_ATTRIBUTION = "MateAI (https://www.youtube.com/@mateai-c6m)"

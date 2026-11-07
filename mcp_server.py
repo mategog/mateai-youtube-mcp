@@ -1091,6 +1091,7 @@ _EMPTY_LISTS = {
 
 def main() -> None:
     yt_common.use_utf8_stdio()
+    yt_common.purge_stale_youtube_cache()
     while True:
         msg = _PENDING.popleft() if _PENDING else _read_message()
         if msg is None:
@@ -1116,6 +1117,7 @@ def main() -> None:
         elif isinstance(method, str) and method in _EMPTY_LISTS:
             _reply(msg_id, _EMPTY_LISTS[method])
         elif method == "tools/call":
+            yt_common.purge_stale_youtube_cache()
             params = msg.get("params", {})
             tool_name = params.get("name", "")
             tool_args = params.get("arguments", {}) or {}

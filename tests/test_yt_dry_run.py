@@ -68,12 +68,18 @@ class TestUpdateAndCommentDryRun(unittest.TestCase):
     def test_update_lists_only_requested_changes(self):
         with _no_network():
             res = yt_studio.update_video_metadata(
-                "abcdefghijk", title="New", publish_at=_future(), dry_run=True)
+                "abcdefghijk", title="New", publish_at=_future(), contains_synthetic_media=False,
+                dry_run=True)
         self.assertTrue(res["dryRun"])
         self.assertEqual(res["wouldChange"]["title"], "New")
         self.assertEqual(res["wouldChange"]["privacyStatus"], "private")
         self.assertNotIn("description", res["wouldChange"])
         self.assertTrue(res["scheduledPublishAtLocal"])
+
+    def test_status_change_without_synthetic_flag_is_refused_in_dry_run_too(self):
+        with _no_network():
+            with self.assertRaisesRegex(ValueError, "contains_synthetic_media"):
+                yt_studio.update_video_metadata("abcdefghijk", privacy_status="public", dry_run=True)
 
     def test_comment_is_not_posted(self):
         with _no_network():

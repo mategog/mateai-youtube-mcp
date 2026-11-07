@@ -102,7 +102,7 @@ def _saved_scopes(token_file: Path) -> list[str]:
 
 
 def _launched_by_desktop() -> bool:
-    """MateAI Desktop sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
+    """MateAI Studio sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
     return os.environ.get("MATEAI_LAUNCHER", "").strip().lower() == "desktop"
 
 
@@ -167,6 +167,48 @@ def _expired_marker() -> Path:
     return TOKEN_FILE.with_name("expired")
 
 
+def _sign_in_again() -> str:
+    return (
+        "Sign in again: open MateAI Studio and click Connect YouTube."
+        if _launched_by_desktop()
+        else "Sign in again: type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`."
+    )
+
+
+# The wording Google's consent screen shows for each scope, so the error names the box to tick.
+_SCOPE_LABELS = {
+    "https://www.googleapis.com/auth/youtube.readonly": "View your YouTube account",
+    "https://www.googleapis.com/auth/yt-analytics.readonly": "View YouTube Analytics reports for your YouTube content",
+    "https://www.googleapis.com/auth/youtube.force-ssl": "Manage your YouTube account",
+}
+
+
+def _missing_scopes_message(needed, granted) -> str:
+    missing = ", ".join(f"'{_SCOPE_LABELS.get(s, s)}'" for s in needed if s not in set(granted))
+    return (
+        f"Google didn't grant {missing}: you unticked it on Google's consent screen. "
+        f"{_sign_in_again()} Keep it ticked this time."
+    )
+
+
+def _token_json(creds) -> str:
+    """to_json() records the scopes we asked for; save the ones Google says it granted instead."""
+    if not creds.granted_scopes:
+        return creds.to_json()
+    info = json.loads(creds.to_json())
+    info["scopes"] = list(creds.granted_scopes)
+    return json.dumps(info)
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Folder 0700, file 0600 from the moment it exists (both are mostly no-ops on Windows)."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.chmod(path, 0o600)  # O_CREAT's mode doesn't touch a file that already existed
+
+
 def get_oauth_credentials(
     client_secret_path: Path = DEFAULT_CLIENT_SECRET,
     upload_scope: bool = False,
@@ -212,21 +254,21 @@ def get_oauth_credentials(
 
     # A cached access token is only reusable if the file says it covers this call's scopes.
     if not creds or not creds.valid or not covers_request:
-        if not force_reauth and creds and (creds.expired or not covers_request) and creds.refresh_token:
+        if not covers_request and _launched_by_desktop():
+            raise RuntimeError(
+                "Your YouTube login doesn't allow this yet (it was connected for reading only). "
+                "Open MateAI Studio, disconnect YouTube and connect again with managing videos allowed."
+            )
+        # A refresh can't add scopes the user never granted, so a missing scope always means consent.
+        if not force_reauth and creds and creds.expired and covers_request and creds.refresh_token:
             try:
                 creds.refresh(Request())
             except RefreshError as exc:
                 with contextlib.suppress(OSError):
                     _expired_marker().write_text("", encoding="utf-8")
-                how = (
-                    "Sign in again: open MateAI Desktop and click Connect YouTube."
-                    if _launched_by_desktop()
-                    else "Sign in again: type /yt-setup in Claude Code, or run "
-                    "`python3 yt_studio.py setup`."
-                )
                 raise RuntimeError(
                     "Your YouTube login expired or was revoked, so Google refused to renew it. "
-                    f"{how} (Google ends logins after 7 days for apps in "
+                    f"{_sign_in_again()} (Google ends logins after 7 days for apps in "
                     f"'Testing' mode.)\nDetails: {exc}"
                 ) from exc
         else:
@@ -236,7 +278,7 @@ def get_oauth_credentials(
             elif client_secret_path.exists():
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
             elif _launched_by_desktop():
-                raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Desktop and click Connect YouTube.")
+                raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Studio and click Connect YouTube.")
             else:
                 raise FileNotFoundError(
                     f"Missing OAuth credentials at {client_secret_path}.\n"
@@ -244,16 +286,22 @@ def get_oauth_credentials(
                     "and save it as client_secret.json (see README.md)."
                 )
             # google-auth-oauthlib adds a PKCE code_verifier/challenge (S256) by default.
-            creds = flow.run_local_server(port=0, prompt="consent")
+            try:
+                creds = flow.run_local_server(port=0, prompt="consent")
+            except Warning as exc:  # oauthlib: "Scope has changed", i.e. the user unticked a box
+                if not hasattr(exc, "new_scope"):
+                    raise
+                raise RuntimeError(_missing_scopes_message(scopes, exc.new_scope or [])) from exc
 
+        token_json = _token_json(creds)
         if use_keyring:
-            _keyring_set(creds.to_json())
+            _keyring_set(token_json)
         else:
-            TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-            TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
-            os.chmod(TOKEN_FILE, 0o600)
+            _write_private(TOKEN_FILE, token_json)
         with contextlib.suppress(OSError):
             _expired_marker().unlink(missing_ok=True)
+        if creds.granted_scopes and not set(scopes) <= set(creds.granted_scopes):
+            raise RuntimeError(_missing_scopes_message(scopes, creds.granted_scopes))
 
     return creds
 

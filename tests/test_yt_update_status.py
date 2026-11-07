@@ -7,6 +7,7 @@ from unittest import mock
 
 import yt_auth
 import yt_studio
+import yt_videos
 
 # What a real videos.list(part="snippet,status") returns: no containsSyntheticMedia.
 LISTED_STATUS = {
@@ -84,18 +85,25 @@ class TestUpdatePreservesSyntheticFlag(unittest.TestCase):
         self.assertEqual(res["privacyStatus"], "private")
 
     def test_privacy_only_result_keeps_existing_title(self):
-        res = self._update(privacy_status="unlisted")
+        res = self._update(privacy_status="unlisted", contains_synthetic_media=False)
         self.assertEqual(res["title"], "Old")
         self.assertEqual(res["privacyStatus"], "unlisted")
 
-    def test_privacy_change_still_sends_status(self):
-        self._update(privacy_status="unlisted")
+    def test_privacy_change_without_synthetic_flag_is_refused(self):
+        # videos.list can't read the flag back, so re-sending status could silently reset it.
+        for kw in ({"privacy_status": "unlisted"}, {"publish_at": "2030-01-01T10:00:00+01:00"}):
+            with self.assertRaisesRegex(ValueError, "contains_synthetic_media"):
+                self._update(**kw)
+        self.assertEqual(self.fake.updates, [])
+
+    def test_privacy_change_sends_status_with_the_explicit_flag(self):
+        self._update(privacy_status="unlisted", contains_synthetic_media=True)
         self.assertEqual(self.fake.updates[0]["part"], "status")
         self.assertEqual(self.fake.updates[0]["body"]["status"]["privacyStatus"], "unlisted")
-        self.assertNotIn("containsSyntheticMedia", self.fake.updates[0]["body"]["status"])
+        self.assertIs(self.fake.updates[0]["body"]["status"]["containsSyntheticMedia"], True)
 
     def test_title_and_privacy_send_both_parts(self):
-        self._update(title="New", privacy_status="unlisted")
+        self._update(title="New", privacy_status="unlisted", contains_synthetic_media=False)
         self.assertEqual(self.fake.updates[0]["part"], "snippet,status")
 
     def test_explicit_flag_is_sent(self):
@@ -113,6 +121,48 @@ class TestUpdatePreservesSyntheticFlag(unittest.TestCase):
             res = self._update(contains_synthetic_media=True, dry_run=True)
         self.assertIs(res["wouldChange"]["containsSyntheticMedia"], True)
         self.assertEqual(self.fake.updates, [])
+
+
+    def test_thumbnail_failure_after_metadata_update_is_reported_not_raised(self):
+        def failing_set(**kw):
+            raise RuntimeError("thumbnail too large")
+        with mock.patch.object(FakeYouTube, "thumbnails",
+                               lambda yt: types.SimpleNamespace(set=failing_set)):
+            res = self._update(title="New", thumbnail_path=self.thumb)
+        self.assertEqual(len(self.fake.updates), 1)
+        self.assertEqual(res["title"], "New")
+        self.assertIs(res["thumbnailUpdated"], False)
+        self.assertIn("thumbnail too large", res["thumbnailError"])
+
+
+class TestTitleDescriptionChecks(unittest.TestCase):
+    """One check for upload, update and dry run, before anything is sent."""
+
+    def test_rejects_angle_brackets_long_title_and_long_description(self):
+        bad = [({"title": "Retention >75%"}, "over 75%"), ({"description": "a <b> c"}, "'<' or '>'"),
+               ({"title": "x" * 101}, "at most 100"), ({"description": "é" * 2501}, "5000")]
+        for kw, msg in bad:
+            with self.subTest(kw=list(kw)), \
+                    mock.patch.object(yt_auth, "get_oauth_credentials", side_effect=AssertionError("OAuth")):
+                with self.assertRaisesRegex(ValueError, msg):
+                    yt_studio.update_video_metadata("abcdefghijk", dry_run=True, **kw)
+                with self.assertRaisesRegex(ValueError, msg):
+                    yt_studio.update_video_metadata("abcdefghijk", **kw)
+
+    def test_limits_are_inclusive(self):
+        yt_videos._check_title_description("x" * 100, "é" * 2500)
+
+    def test_upload_checks_the_description_after_hashtags_are_added(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video = Path(tmp) / "v.mp4"
+            video.write_bytes(b"0")
+            ok = yt_studio.upload_private_draft(video, title="t", description="d" * 4990, dry_run=True)
+            self.assertEqual(len(ok["description"]), 4990)
+            with self.assertRaisesRegex(ValueError, "5000"):
+                yt_studio.upload_private_draft(video, title="t", description="d" * 4990,
+                                               hashtags=["shorts", "ai"], dry_run=True)
+            with self.assertRaisesRegex(ValueError, "over 75%"):
+                yt_studio.upload_private_draft(video, title="Up >75%", dry_run=True)
 
 
 if __name__ == "__main__":

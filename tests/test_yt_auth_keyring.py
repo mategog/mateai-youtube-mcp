@@ -58,7 +58,7 @@ class TestKeyringBackend(unittest.TestCase):
         self.assertFalse(self.token_file.exists())
 
     def test_refreshed_token_is_saved_to_keyring_and_no_file_is_written(self):
-        creds = mock.Mock(valid=False, expired=True, refresh_token="r")
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
         creds.to_json.return_value = '{"token": "new"}'
         with mock.patch.object(yt_auth, "_keyring_get", return_value=json.dumps(TOKEN_INFO)), \
                 mock.patch.object(yt_auth, "_keyring_set") as saved:
@@ -68,7 +68,7 @@ class TestKeyringBackend(unittest.TestCase):
         self.assertFalse(self.token_file.exists())
 
     def test_builtin_client_is_used_when_no_client_file_exists(self):
-        creds = mock.Mock(valid=True)
+        creds = mock.Mock(valid=True, granted_scopes=None)
         creds.to_json.return_value = "{}"
         flow = mock.Mock()
         flow.run_local_server.return_value = creds
@@ -90,7 +90,7 @@ class TestKeyringBackend(unittest.TestCase):
     def test_a_users_own_client_file_wins_over_the_builtin_client(self):
         secret = Path(self.tmp.name) / "client_secret.json"
         secret.write_text("{}", encoding="utf-8")
-        creds = mock.Mock(valid=True)
+        creds = mock.Mock(valid=True, granted_scopes=None)
         creds.to_json.return_value = "{}"
         flow = mock.Mock()
         flow.run_local_server.return_value = creds

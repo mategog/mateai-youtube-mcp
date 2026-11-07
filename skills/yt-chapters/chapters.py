@@ -22,7 +22,8 @@ def parse_ts(s):
 
 def load(path):
     """Cues as (start, end, text) from .srt, .vtt or whisper .json."""
-    raw = open(path, encoding="utf-8", errors="replace").read()
+    with open(path, encoding="utf-8", errors="replace") as f:
+        raw = f.read()
     if path.endswith(".json"):
         d = json.loads(raw)
         segs = d.get("segments", d if isinstance(d, list) else [])

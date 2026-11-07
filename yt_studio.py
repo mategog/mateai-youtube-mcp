@@ -46,6 +46,7 @@ from yt_common import (  # noqa: F401
     _http_get,
     _parse_iso_duration,
     _ssl_context,
+    purge_stale_youtube_cache,
 )
 from yt_manage import (  # noqa: F401
     delete_video,
@@ -115,6 +116,7 @@ def main() -> None:
     p_up.add_argument("--auto-comment", action="store_true", help="Automatically post the top-level comment")
 
     args = parser.parse_args()
+    purge_stale_youtube_cache()
     cmd = args.cmd or "snapshot"
 
     if cmd == "setup":

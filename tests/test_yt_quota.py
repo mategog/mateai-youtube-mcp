@@ -1,14 +1,21 @@
 import json
 import os
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from googleapiclient.errors import HttpError
-from googleapiclient.http import HttpMockSequence, MediaInMemoryUpload
+import yt_auth
 
-import yt_quota
+try:  # CI runs without the Google libraries; other tests may leave a stub `googleapiclient` behind
+    from googleapiclient.errors import HttpError
+    from googleapiclient.http import HttpMockSequence, MediaInMemoryUpload
+
+    import yt_quota
+except ImportError:
+    yt_quota = None
 
 CHUNK = 256 * 1024
 
@@ -20,6 +27,22 @@ def _request(responses, **kw):
     )
 
 
+class TestOnlyMateAIStudioCounts(unittest.TestCase):
+    def test_plugin_build_gets_no_request_builder_and_never_imports_yt_quota(self):
+        discovery = types.SimpleNamespace(build=mock.Mock())
+        with mock.patch.dict(os.environ, {"MATEAI_LAUNCHER": "", "MATEAI_YT_HOME": "/tmp/x"}), \
+                mock.patch.dict(sys.modules, {"yt_quota": None,  # importing it would raise
+                                              "googleapiclient": types.ModuleType("googleapiclient"),
+                                              "googleapiclient.discovery": discovery}), \
+                mock.patch.object(yt_auth, "get_oauth_credentials"):
+            yt_auth._youtube_client()
+            yt_auth._youtube_and_analytics_clients()
+        for call in discovery.build.call_args_list:
+            self.assertNotIn("requestBuilder", call.kwargs)
+        self.assertEqual(discovery.build.call_count, 3)
+
+
+@unittest.skipIf(yt_quota is None, "google-api-python-client not installed")
 class TestQuotaCounter(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()

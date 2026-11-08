@@ -306,20 +306,25 @@ def get_oauth_credentials(
     return creds
 
 
+def _quota_kwargs() -> dict:
+    """Count Data API calls for MateAI Studio's quota meter; plugin users (who also have MATEAI_YT_HOME) skip it."""
+    if not _launched_by_desktop():
+        return {}
+    import yt_quota
+
+    return {"requestBuilder": yt_quota.CountingRequest}
+
+
 def _youtube_client(client_secret_path: Path = DEFAULT_CLIENT_SECRET, upload_scope: bool = True):
     from googleapiclient.discovery import build
 
-    import yt_quota
-
     creds = get_oauth_credentials(client_secret_path, upload_scope=upload_scope)
-    return build("youtube", "v3", credentials=creds, requestBuilder=yt_quota.CountingRequest)
+    return build("youtube", "v3", credentials=creds, **_quota_kwargs())
 
 
 def _youtube_and_analytics_clients(client_secret_path: Path = DEFAULT_CLIENT_SECRET):
     """YouTube Data v3 + YouTube Analytics v2 clients on one read-only credential."""
     from googleapiclient.discovery import build
 
-    import yt_quota
-
     creds = get_oauth_credentials(client_secret_path, upload_scope=False)
-    return build("youtube", "v3", credentials=creds, requestBuilder=yt_quota.CountingRequest), build("youtubeAnalytics", "v2", credentials=creds)
+    return build("youtube", "v3", credentials=creds, **_quota_kwargs()), build("youtubeAnalytics", "v2", credentials=creds)

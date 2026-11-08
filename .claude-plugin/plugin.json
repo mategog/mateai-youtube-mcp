@@ -1,6 +1,6 @@
 {
   "name": "yt-studio",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "Self-hosted YouTube Studio & Analytics connector (MCP + Skill + Dashboard) by MateAI (@mateai-c6m).",
   "author": {
     "name": "MateAI",

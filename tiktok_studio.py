@@ -22,6 +22,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
+import yt_auth
 import yt_common
 from yt_studio import (
     DEFAULT_HANDLE,
@@ -35,6 +36,8 @@ TIKTOK_TOKEN_FILE = STATE_DIR / ".tokens" / "tiktok_token.json"
 TIKTOK_CLIENT_FILE = STATE_DIR / "tiktok_auth_secret" / "tiktok_client.json"
 TIKTOK_CACHE_FILE = STATE_DIR / "tiktok_snapshot.json"
 TIKTOK_HISTORY_FILE = STATE_DIR / "tiktok_history.jsonl"
+# MateAI Studio (MATEAI_TOKEN_BACKEND=keyring) keeps the TikTok login, client_key/secret included, in one Keychain entry.
+TIKTOK_KEYRING_USER = "tiktok-oauth-token"
 REDIRECT_URI = "http://127.0.0.1:8765/callback/"
 TIKTOK_SCOPES = "user.info.basic,user.info.profile,user.info.stats,video.list,video.upload"
 
@@ -306,9 +309,9 @@ def _load_client_credentials(client_file: Path = TIKTOK_CLIENT_FILE) -> tuple[st
     return key, secret
 
 
-def _save_token_payload(token_file: Path, resp: dict[str, Any]) -> dict[str, Any]:
+def _token_payload(resp: dict[str, Any]) -> dict[str, Any]:
     now = int(time.time())
-    saved = {
+    return {
         "access_token": resp["access_token"],
         "refresh_token": resp.get("refresh_token", ""),
         "expires_at": now + int(resp.get("expires_in", 86400)),
@@ -316,6 +319,10 @@ def _save_token_payload(token_file: Path, resp: dict[str, Any]) -> dict[str, Any
         "open_id": resp.get("open_id", ""),
         "scope": resp.get("scope", ""),
     }
+
+
+def _save_token_payload(token_file: Path, resp: dict[str, Any]) -> dict[str, Any]:
+    saved = _token_payload(resp)
     _write_secret_file(token_file, json.dumps(saved, indent=2))
     return saved
 
@@ -347,7 +354,11 @@ def refresh_tiktok_token(
     token_file: Path = TIKTOK_TOKEN_FILE,
 ) -> dict[str, Any]:
     client_key, client_secret = _load_client_credentials(client_file)
-    resp = _post_form(
+    return _save_token_payload(token_file, _refresh_request(client_key, client_secret, refresh_token))
+
+
+def _refresh_request(client_key: str, client_secret: str, refresh_token: str) -> dict[str, Any]:
+    return _post_form(
         OAUTH_TOKEN_URL,
         {
             "client_key": client_key,
@@ -356,7 +367,6 @@ def refresh_tiktok_token(
             "refresh_token": refresh_token,
         },
     )
-    return _save_token_payload(token_file, resp)
 
 
 def get_valid_tiktok_token(
@@ -364,11 +374,19 @@ def get_valid_tiktok_token(
     client_file: Path = TIKTOK_CLIENT_FILE,
 ) -> str:
     """Return a valid TikTok access_token, refreshing via refresh_token when expired."""
-    if not token_file.exists():
+    use_keyring = yt_auth._use_keyring()
+    if use_keyring:
+        stored = yt_auth._keyring().get_password(yt_auth.KEYRING_SERVICE, TIKTOK_KEYRING_USER)
+        if not stored:
+            raise RuntimeError("No TikTok login found. Open MateAI and connect TikTok.")
+        data = json.loads(stored)
+    elif not token_file.exists():
         raise RuntimeError(
             "No TikTok OAuth token found. Run `python3 tiktok_studio.py setup` to connect your TikTok account."
         )
-    data = json.loads(token_file.read_text(encoding="utf-8"))
+    else:
+        data = json.loads(token_file.read_text(encoding="utf-8"))
+    setup = "open MateAI and connect TikTok again" if use_keyring else "run `python3 tiktok_studio.py setup`"
     now = int(time.time())
     if int(data.get("expires_at", 0)) > now + 60 and data.get("access_token"):
         return str(data["access_token"])
@@ -376,13 +394,18 @@ def get_valid_tiktok_token(
     refresh_exp = data.get("refresh_expires_at")
     if refresh_exp is not None and int(refresh_exp) <= now:
         raise RuntimeError(
-            "TikTok refresh token expired; run `python3 tiktok_studio.py setup` to re-authenticate."
+            f"TikTok refresh token expired; {setup} to re-authenticate."
         )
     refresh_tok = (data.get("refresh_token") or "").strip()
     if not refresh_tok:
         raise RuntimeError(
-            "TikTok access token expired and no refresh_token is stored; run `python3 tiktok_studio.py setup`."
+            f"TikTok access token expired and no refresh_token is stored; {setup}."
         )
+    if use_keyring:
+        resp = _refresh_request(data.get("client_key", ""), data.get("client_secret", ""), refresh_tok)
+        merged = {**data, **_token_payload(resp)}  # keeps client_key/secret and account
+        yt_auth._keyring().set_password(yt_auth.KEYRING_SERVICE, TIKTOK_KEYRING_USER, json.dumps(merged))
+        return str(merged["access_token"])
     refreshed = refresh_tiktok_token(refresh_tok, client_file=client_file, token_file=token_file)
     return str(refreshed["access_token"])
 

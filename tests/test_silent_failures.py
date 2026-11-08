@@ -108,6 +108,9 @@ class SilentFailureTests(unittest.TestCase):
             def insert(self, **kw):
                 return mock.Mock(next_chunk=lambda: (None, {"id": "newvideo123"}))
 
+            def list(self, **kw):
+                return mock.Mock(execute=lambda: {"items": [{"processingDetails": {"processingStatus": "succeeded"}}]})
+
         def boom(**kw):
             raise FakeHttpError(403)
         client = mock.Mock(videos=lambda: Videos(), thumbnails=lambda: mock.Mock(set=boom))
@@ -123,6 +126,43 @@ class SilentFailureTests(unittest.TestCase):
         self.assertIsNone(res["commentPostedId"])
         self.assertEqual(res["thumbnailError"], "HTTP 403")
         self.assertEqual(res["commentError"], "HTTP 403")
+
+    def _upload_with_processing(self, statuses):
+        """Upload with a thumbnail while videos.list reports `statuses` in order (the last one repeats)."""
+        left, set_calls = list(statuses), []
+
+        class Videos:
+            def insert(self, **kw):
+                return mock.Mock(next_chunk=lambda: (None, {"id": "newvideo123"}))
+
+            def list(self, **kw):
+                status = left.pop(0) if len(left) > 1 else left[0]
+                return mock.Mock(execute=lambda: {"items": [{"processingDetails": {"processingStatus": status}}]})
+
+        thumbs = mock.Mock(set=lambda **kw: (set_calls.append(kw), mock.Mock(execute=lambda: {}))[1])
+        self.use(mock.Mock(videos=lambda: Videos(), thumbnails=lambda: thumbs))
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(yt_videos.time, "sleep") as sleep:
+            video, thumb = Path(tmp) / "v.mp4", Path(tmp) / "t.png"
+            video.write_bytes(b"x")
+            thumb.write_bytes(b"x")
+            res = yt_studio.upload_private_draft(video, title="T", thumbnail_path=thumb)
+        return res, set_calls, sleep
+
+    def test_thumbnail_is_set_once_processing_succeeds(self):
+        res, set_calls, sleep = self._upload_with_processing(["processing", "processing", "succeeded"])
+        self.assertTrue(res["thumbnailUploaded"])
+        self.assertNotIn("thumbnailError", res)
+        self.assertEqual(len(set_calls), 1)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_thumbnail_is_not_set_when_processing_times_out_or_fails(self):
+        for statuses in (["processing"], ["processing", "failed"]):
+            with self.subTest(statuses=statuses):
+                res, set_calls, _ = self._upload_with_processing(statuses)
+                self.assertFalse(res["thumbnailUploaded"])
+                self.assertEqual(set_calls, [])
+                self.assertIn("yt_update_video", res["thumbnailError"])
+                self.assertEqual(res["videoId"], "newvideo123")
 
     def test_unknown_subscriber_count_is_none_not_invented(self):
         with mock.patch.object(yt_common, "_http_get", return_value="<html></html>"):

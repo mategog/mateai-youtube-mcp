@@ -330,7 +330,7 @@ def _do_yt_video_details(args: dict[str, Any]) -> dict[str, Any]:
                 },
                 "pinned_comment": {"type": "string", "description": "Top-level comment text to post on the video when auto_post_comment is true."},
                 "spec_path": {"type": "string", "description": "Optional local path to a Markdown upload spec file ('## Title', '## Description', '## Tags', '## Pinned comment') used as fallback when inline fields are omitted."},
-                "thumbnail_path": {"type": "string", "description": "Optional absolute local path to a PNG/JPG custom thumbnail image (<=2MB, requires verified YouTube account)."},
+                "thumbnail_path": {"type": "string", "description": "Optional absolute local path to a PNG/JPG custom thumbnail image (<=50MB, requires verified YouTube account)."},
                 "privacy_status": {
                     "type": "string",
                     "enum": ["private", "unlisted", "public"],
@@ -449,7 +449,7 @@ def _do_yt_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
                 },
                 "thumbnail_path": {
                     "type": "string",
-                    "description": "Optional absolute local filesystem path to a readable PNG/JPG image (<=2MB) to upload via thumbnails.set.",
+                    "description": "Optional absolute local filesystem path to a readable PNG/JPG image (<=50MB) to upload via thumbnails.set.",
                 },
                 "contains_synthetic_media": {
                     "type": "boolean",

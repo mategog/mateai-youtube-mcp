@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +109,24 @@ def _check_title_description(title: str | None, description: str | None) -> None
         )
 
 
+# thumbnails.set docs: max 50MB, image/jpeg or image/png (the 2MB limit is the mobile Studio app's, not the API's).
+_THUMBNAIL_MAX_BYTES = 50 * 1024 * 1024
+_THUMBNAIL_SUFFIXES = (".jpg", ".jpeg", ".png")
+
+
+def _check_thumbnail(path: Path | None) -> None:
+    """Fail before any upload or update, instead of silently skipping or half-applying the thumbnail."""
+    if path is None:
+        return
+    if not path.is_file():
+        raise ValueError(f"Thumbnail file not found: {path}")
+    if path.suffix.lower() not in _THUMBNAIL_SUFFIXES:
+        raise ValueError(f"The thumbnail must be a JPG or PNG image; got '{path.suffix or path.name}'.")
+    size = path.stat().st_size
+    if size > _THUMBNAIL_MAX_BYTES:
+        raise ValueError(f"The thumbnail is {size / 1024 / 1024:.1f} MB; YouTube allows at most 50 MB.")
+
+
 def _build_update_changes(
     title: str | None,
     description: str | None,
@@ -138,6 +157,20 @@ def _build_update_changes(
     if contains_synthetic_media is not None:
         status["containsSyntheticMedia"] = contains_synthetic_media
     return {name: fields for name, fields in (("snippet", snippet), ("status", status)) if fields}
+
+
+def _wait_until_processed(yt: Any, video_id: str, polls: int = 60, poll_seconds: float = 5) -> bool:
+    """thumbnails.set on a Short may not apply before processing succeeds (thumbnails.set docs). Waits up to ~5 min."""
+    for attempt in range(polls):
+        items = yt.videos().list(part="processingDetails", id=video_id).execute().get("items") or []
+        status = items[0].get("processingDetails", {}).get("processingStatus") if items else None
+        if status == "succeeded":
+            return True
+        if status in ("failed", "terminated"):
+            return False
+        if attempt < polls - 1:
+            time.sleep(poll_seconds)
+    return False
 
 
 def upload_private_draft(
@@ -184,6 +217,7 @@ def upload_private_draft(
             final_desc = f"{final_desc}\n\n{hashtag_line}".strip()
 
     _check_title_description(final_title, final_desc)
+    _check_thumbnail(thumbnail_path)
 
     final_tags = tags if tags is not None else meta["tags"]
     final_comment = pinned_comment if pinned_comment is not None else meta["pinnedComment"]
@@ -231,13 +265,19 @@ def upload_private_draft(
     # The video is already uploaded, so a failed thumbnail or comment must not raise; but say why.
     errors: dict[str, str] = {}
     thumb_uploaded = False
-    if thumbnail_path and thumbnail_path.exists():
+    if thumbnail_path:
         try:
-            yt.thumbnails().set(
-                videoId=video_id,
-                media_body=MediaFileUpload(str(thumbnail_path)),
-            ).execute()
-            thumb_uploaded = True
+            if _wait_until_processed(yt, video_id):
+                yt.thumbnails().set(
+                    videoId=video_id,
+                    media_body=MediaFileUpload(str(thumbnail_path)),
+                ).execute()
+                thumb_uploaded = True
+            else:
+                errors["thumbnailError"] = (
+                    "YouTube hadn't finished processing the video, so the thumbnail was not set "
+                    "(it may not stick on a Short before then). Set the cover later with yt_update_video."
+                )
         except Exception as exc:
             errors["thumbnailError"] = str(exc)
             if yt_common.is_quota_error(exc):
@@ -291,6 +331,7 @@ def update_video_metadata(
     """
     changes = _build_update_changes(
         title, description, tags, privacy_status, publish_at, contains_synthetic_media)
+    _check_thumbnail(thumbnail_path)
 
     if dry_run:
         publish_local, warnings = _describe_publish_at(publish_at)
@@ -337,7 +378,7 @@ def update_video_metadata(
     # The metadata is already updated, so a failed thumbnail must not raise; but say why.
     errors: dict[str, str] = {}
     thumb_updated = False
-    if thumbnail_path and thumbnail_path.exists():
+    if thumbnail_path:
         try:
             yt.thumbnails().set(
                 videoId=video_id,

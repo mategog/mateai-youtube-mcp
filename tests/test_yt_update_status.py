@@ -72,6 +72,12 @@ class TestUpdatePreservesSyntheticFlag(unittest.TestCase):
             self.assertNotIn("status", call["part"])
             self.assertNotIn("status", call["body"])
 
+    def test_missing_thumbnail_fails_before_anything_is_changed(self):
+        with self.assertRaisesRegex(ValueError, "not found"):
+            self._update(title="New", thumbnail_path=self.thumb.with_name("missing.png"))
+        self.assertEqual(self.fake.updates, [])
+        self.assertEqual(self.fake.thumbnail_calls, [])
+
     def test_title_only_sends_snippet_without_status(self):
         self._update(title="New")
         self.assertEqual(len(self.fake.updates), 1)

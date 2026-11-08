@@ -63,6 +63,21 @@ class TestUploadDryRun(unittest.TestCase):
             with self.assertRaises(ValueError):
                 yt_studio.upload_private_draft(self.video, dry_run=True)
 
+    def test_bad_thumbnail_fails_in_dry_run_for_upload_and_update(self):
+        big = Path(self.tmp.name) / "big.png"
+        with big.open("wb") as f:
+            f.truncate(50 * 1024 * 1024 + 1)  # sparse, no real 50MB write
+        gif = Path(self.tmp.name) / "cover.gif"
+        gif.write_bytes(b"gif")
+        cases = {"not found": Path(self.tmp.name) / "missing.png", "JPG or PNG": gif, "50 MB": big}
+        with _no_network():
+            for message, thumb in cases.items():
+                with self.subTest(message):
+                    with self.assertRaisesRegex(ValueError, message):
+                        yt_studio.upload_private_draft(self.video, title="t", thumbnail_path=thumb, dry_run=True)
+                    with self.assertRaisesRegex(ValueError, message):
+                        yt_studio.update_video_metadata("abcdefghijk", thumbnail_path=thumb, dry_run=True)
+
 
 class TestUpdateAndCommentDryRun(unittest.TestCase):
     def test_update_lists_only_requested_changes(self):

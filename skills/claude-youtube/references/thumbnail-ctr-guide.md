@@ -70,7 +70,7 @@ Source: Focus Digital, December 2025 `[2025]`
 | Recommended resolution | 1920x1080 (optimized for TV) |
 | Aspect ratio | 16:9 |
 | File formats | JPG, PNG, GIF, BMP |
-| Max file size | 2MB |
+| Max file size | 2 MB (mobile app); 50 MB (desktop Studio and API) |
 
 ---
 

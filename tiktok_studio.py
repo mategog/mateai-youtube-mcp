@@ -68,6 +68,12 @@ AI_LABEL_REMINDER = (
     "Turn on TikTok's AI-generated content toggle in the mobile app before posting "
     "(synthetic voice cannot be flagged via the Inbox API)."
 )
+# TikTok answered SEND_TO_USER_INBOX for sandbox uploads on 2026-11-09, yet no notification arrived.
+INBOX_DELIVERY_NOTE = (
+    "TikTok accepted the upload. It is not confirmed in your inbox: check TikTok app > Inbox > "
+    "System notifications. Drafts from a sandbox (unaudited) app may never arrive; if nothing shows up, "
+    "post from TikTok Studio on the web instead."
+)
 
 
 def build_pkce_pair(verifier: str | None = None) -> tuple[str, str]:
@@ -567,6 +573,7 @@ def upload_tiktok_inbox_draft(
         "totalChunks": total_chunks,
         "caption": caption,
         "aiLabelReminder": AI_LABEL_REMINDER,
+        "deliveryNote": INBOX_DELIVERY_NOTE,
     }
 
 

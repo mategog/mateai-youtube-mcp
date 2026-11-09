@@ -775,7 +775,8 @@ def _do_tiktok_channel_snapshot(args: dict[str, Any]) -> dict[str, Any]:
             "via the official TikTok Content Posting API (/v2/post/publish/inbox/video/init/, which accepts source_info only). "
             "Builds and returns the ready-to-paste caption (from spec_path or title/hashtags, with #Shorts stripped) "
             "plus an AI-generated content label reminder so the creator can paste the caption and turn on TikTok's "
-            "AI-generated toggle in the mobile app before publishing."
+            "AI-generated toggle in the mobile app before publishing. A successful return means TikTok accepted the "
+            "upload, not that the inbox notification arrived (see deliveryNote)."
         ),
         "inputSchema": {
             "type": "object",

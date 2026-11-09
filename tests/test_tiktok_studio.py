@@ -135,6 +135,7 @@ class TestTikTokPureLogic(unittest.TestCase):
             self.assertEqual(res["publishId"], "pub_123")
             self.assertEqual(res["caption"], "Carbon Short\n\n#AINews")
             self.assertIn("AI-generated", res["aiLabelReminder"])
+            self.assertIn("not confirmed", res["deliveryNote"])
             mock_put.assert_called_once()
 
     def test_mcp_server_registers_and_dispatches_tiktok_tools(self):

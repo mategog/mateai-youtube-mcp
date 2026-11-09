@@ -17,7 +17,7 @@ Ask your AI things like:
 >
 > "Which of my Shorts lost viewers in the first two seconds?"
 
-**Contents:** [Why this server](#why-this-server) · [Quick start](#quick-start) · [Try it](#try-it) · [Tools](#tools) · [Safety](#safety-dry-runs-confirmations-and-limits) · [Quota](#youtube-api-quota) · [Privacy](#privacy-what-it-runs-sends-and-fetches) · [TikTok](#tiktok-optional) · [Troubleshooting](#troubleshooting) · [License](#license)
+**Contents:** [Why this server](#why-this-server) · [Quick start](#quick-start) · [Try it](#try-it) · [Tools](#tools) · [Safety](#safety-dry-runs-confirmations-and-limits) · [Quota](#youtube-api-quota) · [Privacy](#privacy-what-it-runs-sends-and-fetches) · [TikTok](#tiktok-optional-experimental) · [Troubleshooting](#troubleshooting) · [License](#license)
 
 ## Why this server
 
@@ -27,7 +27,7 @@ Ask your AI things like:
 - **One-command setup.** `/yt-setup` in Claude Code walks you through Google's sign-in and finds the file Google gives you.
 - **Runs only on your machine.** Your login stays in a local file only you can read, and the author receives no data. See [Privacy](#privacy-what-it-runs-sends-and-fetches).
 - **$0.** Google's YouTube APIs are free within the daily quota, and hosted creator tools charge a monthly fee to wrap these same APIs.
-- **TikTok side by side (optional).** Compare each Short with the same video on TikTok, and send a Short to your TikTok inbox.
+- **TikTok side by side (optional, experimental).** Compare each Short with the same video on TikTok, and send a Short to your TikTok inbox. Needs your own TikTok developer app in sandbox mode; see [TikTok](#tiktok-optional-experimental).
 - **A full creator pipeline.** The plugin bundles research, ideation, packaging and scripting skills next to the MCP tools. See [Bundled skills](#bundled-skills-and-credits).
 
 ### Is it the right tool for you?
@@ -37,7 +37,7 @@ Ask your AI things like:
 | Upload, schedule and edit videos on **your own** channel | Yes |
 | Diagnose Shorts retention and swipe-away rate | Yes |
 | Read and reply to comments on your videos | Yes |
-| Compare YouTube Shorts with TikTok | Yes (optional) |
+| Compare YouTube Shorts with TikTok | Experimental: needs your own TikTok sandbox app |
 | Get transcripts of **other people's** videos | No: use a transcript MCP server |
 | Manage playlists, bulk Reporting API exports, revenue or demographics | No: other YouTube MCP servers cover more of the API |
 
@@ -165,7 +165,7 @@ After setup, ask your AI:
 | `yt_delete_video` | Permanently delete a video; refuses unless you pass its exact title. |
 | `yt_get_safety_settings` / `yt_set_safety_settings` | Show / choose which actions ask you first. Used by `/yt-safety`. |
 
-**TikTok** (optional, needs the [TikTok setup](#tiktok-optional))
+**TikTok** (optional and experimental, needs the [TikTok setup](#tiktok-optional-experimental))
 
 | Tool | What it does |
 |---|---|
@@ -284,9 +284,11 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 
 **With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
 
-## TikTok (optional)
+## TikTok (optional, experimental)
 
 Cross-post your Shorts and see how they do on both platforms. This uses TikTok's official, free developer API only: no cookies, no scraping. It never publishes for you; a video lands in your TikTok app inbox and you tap Post yourself. The YouTube tools work the same whether or not you set this up.
+
+**Experimental: you need your own TikTok developer app, in sandbox mode.** Like the YouTube side, the plugin has no shared app: you create one at developers.tiktok.com. Without TikTok's app review, an app only works in its **sandbox**, and only for the TikTok accounts you add there as **target users** (your own account). Status today: stats (`tiktok_channel_snapshot`) are tested through a sandbox app; sending a draft to the inbox through a sandbox app is **not tested yet**.
 
 > "Send `exports/short.mp4` to my TikTok inbox with the caption from `planning/my-short-upload.md`."
 >
@@ -298,9 +300,12 @@ Cross-post your Shorts and see how they do on both platforms. This uses TikTok's
 **Connect TikTok (once)**
 
 1. Create an app at [developers.tiktok.com](https://developers.tiktok.com/) and choose the **Desktop** platform.
-2. Add the redirect URI `http://127.0.0.1:8765/callback/` (exactly, with the trailing slash).
-3. Enable these scopes: `user.info.basic`, `user.info.profile`, `user.info.stats`, `video.list`, `video.upload`.
-4. Run the wizard. It asks for your app's Client Key and Client Secret, opens TikTok's sign-in in your browser, and saves the token locally:
+2. Open the app's **Sandbox** (create one if there is none). Do the next steps in the sandbox.
+3. Add the redirect URI `http://127.0.0.1:8765/callback/` (exactly, with the trailing slash).
+4. Enable these scopes: `user.info.basic`, `user.info.profile`, `user.info.stats`, `video.list`, `video.upload`.
+5. Under **Target users**, add the TikTok account you'll use. Only target users can sign in; any other account gets a `non_sandbox_target` error.
+6. Click **Apply changes**. Edits in the sandbox don't take effect until you do.
+7. Run the wizard. It asks for the sandbox's Client Key and Client Secret, opens TikTok's sign-in in your browser, and saves the token locally. Keep the wizard running until the sign-in finishes:
 
 ```bash
 python3 tiktok_studio.py setup
@@ -319,6 +324,7 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 
 **Good to know**
 
+- **Drafts only, never public posts.** Posting directly needs the `video.publish` scope and TikTok's audit, and TikTok forces posts from unaudited apps to private. The plugin only sends drafts to your inbox (`video.upload`).
 - **Captions are pasted by hand.** TikTok's inbox upload cannot take a caption. `tiktok_upload_draft` builds one from your upload spec (title plus the `#hashtags` in the description, `#Shorts` removed) and returns it for you to paste in the app.
 - **Switch on the AI-generated label yourself.** If your video uses a synthetic voice or AI visuals, turn on TikTok's AI-generated content toggle in the app before posting. The API cannot set it.
 - **Matching is by title.** The comparison table pairs a Short with a TikTok when the title (hashtags ignored) matches the TikTok title or description. Anything else shows up as its own row, with "—" for the missing platform.
@@ -330,7 +336,9 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 | "No TikTok OAuth token found" | Run `python3 tiktok_studio.py setup`. |
 | "TikTok refresh token expired" | Run `python3 tiktok_studio.py setup` again to sign in. |
 | Setup waits, then times out | The browser tab was closed. Rerun setup; it waits 5 minutes for the sign-in. |
-| Sign-in page rejects the redirect | The redirect URI in your TikTok app must be exactly `http://127.0.0.1:8765/callback/`. |
+| Sign-in page rejects the redirect | The redirect URI in your TikTok sandbox must be exactly `http://127.0.0.1:8765/callback/`. |
+| `non_sandbox_target` or a scope error | Add your account under **Target users**, check the scopes, then click **Apply changes** in the sandbox and rerun setup. |
+| The wrong TikTok account got connected | The browser was already signed in to another TikTok account and used it without asking. Sign out of TikTok in the browser, then rerun setup. |
 | Channel handle is empty | The `user.info.profile` scope is missing. Enable it in your TikTok app and run setup again. |
 
 </details>

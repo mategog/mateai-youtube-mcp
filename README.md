@@ -1,91 +1,73 @@
-# <img src="assets/mateai-logo.png" width="44" align="absmiddle" alt="MateAI YouTube Studio Icon"/> mateai-youtube-mcp
+# <img src="assets/mateai-logo.png" width="44" align="absmiddle" alt=""/> MateAI YouTube MCP: upload, schedule and analyze your channel from Claude & Antigravity
 
 [![Release](https://img.shields.io/github/v/release/mategog/mateai-youtube-mcp?color=238636)](https://github.com/mategog/mateai-youtube-mcp/releases/latest)
 [![mategog/mateai-youtube-mcp MCP server](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp)
-[![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor%20on%20GitHub-mategog-EA4AAA?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/mategog)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/mateai)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
+[![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
+
+**`mateai-youtube-mcp` (installed as the `yt-studio` plugin) is a free, self-hosted MCP server that lets Claude Code, Claude Desktop and Google Antigravity upload, schedule and analyze videos on your own YouTube channel through Google's official YouTube Data and Analytics APIs.** It runs on your computer, uses the AI subscription you already pay for, and costs $0.
 
 ![Dry run, then schedule: an animated replay of real plugin output](assets/demo.gif)
 
 <sub>Animated replay of real v0.5.0 output (re-created, not a live screen recording): a dry run, a wrong date caught by a warning, then a real scheduled upload.</sub>
 
-**Tell your AI to upload, title, schedule and analyze your YouTube videos. Use the Claude or Antigravity subscription you already pay for, with no extra tool and no monthly fee.**
+Ask your AI things like:
 
 > "Upload `exports/short.mp4` with this cover, write the title, description and hashtags, and schedule it for tomorrow 20:00 CET."
 >
 > "Which of my Shorts lost viewers in the first two seconds?"
 
-That is what this plugin does. It connects **Claude Code / Claude Desktop** or **Google Antigravity** to your own YouTube channel through Google's official, free YouTube APIs, so the assistant you already use can do the work you'd otherwise do by hand in YouTube Studio:
+**Contents:** [Why this server](#why-this-server) · [Quick start](#quick-start) · [Try it](#try-it) · [Tools](#tools) · [Safety](#safety-dry-runs-confirmations-and-limits) · [Quota](#youtube-api-quota) · [Privacy](#privacy-what-it-runs-sends-and-fetches) · [TikTok](#tiktok-optional) · [Troubleshooting](#troubleshooting) · [License](#license)
 
-- **Upload and schedule:** video, custom cover, title, description, hashtags, tags, language, synthetic-media disclosure and a future publish time.
-- **Edit and engage:** update metadata on existing videos and post comments.
-- **Analyze:** retention, Viewed vs. swiped away, engaged views, watch time and subscribers gained, per video, with a local `report.html` dashboard.
-- **Compare with TikTok (optional):** connect your TikTok account through TikTok's official API to pull its stats, send a Short to your TikTok app inbox with a ready-to-paste caption, and see your YouTube Shorts and TikToks side by side. See [TikTok](#tiktok-optional).
+## Why this server
 
-Hosted "creator OS" tools charge $19-$49 a month to wrap those same free Google APIs. Here nothing sits between your AI and YouTube: it runs **100% on your machine**, your login stays in a local file only you can read, and the plugin costs **$0**. Connecting takes one command, **`/yt-setup`** (see [Easy Setup](#easy-setup-yt-setup-claude-code)).
+- **Built for Shorts.** Viewed vs. swiped away, engaged views, average % viewed and 100-point retention curves per video, so you can see where viewers leave.
+- **Upload and schedule in one sentence.** Video, cover, title, description, hashtags, tags, language, synthetic-media disclosure, pinned comment and a future publish time.
+- **Nothing goes live by surprise.** Every write has a `dry_run` preview, deleting a video always asks first, and `/yt-safety` lets you add confirmations for uploads, edits and comments. The confirmation box is shown by the plugin, so the AI can't click "yes" for you. See [Safety](#safety-dry-runs-confirmations-and-limits).
+- **One-command setup.** `/yt-setup` in Claude Code walks you through Google's sign-in and finds the file Google gives you.
+- **Runs only on your machine.** Your login stays in a local file only you can read, and the author receives no data. See [Privacy](#privacy-what-it-runs-sends-and-fetches).
+- **$0.** Google's YouTube APIs are free within the daily quota, and hosted creator tools charge a monthly fee to wrap these same APIs.
+- **TikTok side by side (optional).** Compare each Short with the same video on TikTok, and send a Short to your TikTok inbox.
+- **A full creator pipeline.** The plugin bundles research, ideation, packaging and scripting skills next to the MCP tools. See [Bundled skills](#bundled-skills-and-credits).
 
-> **Rather skip the Google Cloud setup?** MateAI Studio is a desktop app built on this plugin: you sign in to YouTube with one click, without creating your own Google Cloud project. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateaistudio.com/)
+### Is it the right tool for you?
 
-Public stats (no login) are available as an opt-in mode: `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`. Built for the [MateAI](https://www.youtube.com/@mateai-c6m) channel.
+| You want to… | This server |
+|---|---|
+| Upload, schedule and edit videos on **your own** channel | Yes |
+| Diagnose Shorts retention and swipe-away rate | Yes |
+| Read and reply to comments on your videos | Yes |
+| Compare YouTube Shorts with TikTok | Yes (optional) |
+| Get transcripts of **other people's** videos | No: use a transcript MCP server |
+| Manage playlists, bulk Reporting API exports, revenue or demographics | No: other YouTube MCP servers cover more of the API |
 
----
+## Quick start
 
-## Quick Start (Public Snapshot, opt-in)
-
-No API keys or packages needed, but public page scraping is opt-in, so pass `--public`. For your own channel, the OAuth2 setup below (official YouTube APIs) is the recommended default:
-
-```bash
-git clone https://github.com/mategog/mateai-youtube-mcp.git
-cd mateai-youtube-mcp
-
-python3 yt_studio.py snapshot --public --handle @mateai-c6m
-open report.html
-```
-
-Print a Markdown table for tracking Shorts A/B style experiments:
-
-```bash
-MATEAI_YT_PUBLIC_SCRAPE=1 python3 yt_studio.py experiment-table --handle @mateai-c6m
-```
-
----
-
-## Install as a Plugin (Antigravity & Claude Code)
-
-`mateai-youtube-mcp` ships as a full **Plugin** (bundling the MCP Server + the `yt-studio` AI Producer Skill + UI card & starter prompts).
-
-### Option A: Google Antigravity
-Clone directly into your Antigravity plugins directory and restart Antigravity:
-
-```bash
-git clone https://github.com/mategog/mateai-youtube-mcp.git \
-  ~/.gemini/config/plugins/mateai-youtube
-```
-
-### Option B: Claude Code
-Install directly from the plugin marketplace:
+### Claude Code (recommended)
 
 ```bash
 claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
-The plugin keeps its state (`.venv`, OAuth secret, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates. Public snapshots work once you opt in (see above). To unlock private Studio analytics and uploads, run **`/yt-setup`** (needs Claude Code 2.1.287 or newer; see [Easy Setup](#easy-setup-yt-setup-claude-code) below).
+Then type **`/yt-setup`** in Claude Code to connect your channel (needs Claude Code 2.1.287 or newer). It takes about 3 minutes the first time; see [Easy setup](#easy-setup-yt-setup).
 
-On an older Claude Code, run the setup wizard by hand with `MATEAI_YT_HOME` pointing at that folder:
+The plugin keeps its state (`.venv`, OAuth client, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates.
+
+### Google Antigravity
+
+Clone into your Antigravity plugins folder, restart Antigravity, then run the [setup wizard](#manual-setup-wizard-any-client) from that folder:
 
 ```bash
-MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
-  python3 ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/<version>/yt_studio.py setup
+git clone https://github.com/mategog/mateai-youtube-mcp.git \
+  ~/.gemini/config/plugins/mateai-youtube
+cd ~/.gemini/config/plugins/mateai-youtube && python3 yt_studio.py setup
 ```
 
-Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
+### Claude Desktop and other MCP clients
 
-On Windows, see [Windows (10/11)](#windows-1011) below. On Linux (untested), `/yt-setup` auto-opening the Google pages is macOS-only; use the [manual wizard](#unlock-private-youtube-studio-analytics--draft-uploads-0mo) (`python3 yt_studio.py setup`).
+Clone the repo, run `python3 yt_studio.py setup` once, then add the server to your client's config (`claude_desktop_config.json` for Claude Desktop):
 
-### Option C: Standalone MCP Config (`mcp_config.json` / `claude_desktop_config.json`)
 ```json
 {
   "mcpServers": {
@@ -97,7 +79,10 @@ On Windows, see [Windows (10/11)](#windows-1011) below. On Linux (untested), `/y
 }
 ```
 
-### Windows (10/11)
+Any MCP client that runs local (stdio) servers can use this config. Only Claude Code, Claude Desktop and Antigravity are tested.
+
+<details>
+<summary><b>Windows (10/11)</b></summary>
 
 The plugin runs on Windows with the same commands; only Python needs one check first.
 
@@ -137,69 +122,88 @@ git clone https://github.com/mategog/mateai-youtube-mcp.git "$env:USERPROFILE\.g
 
 For the private Studio analytics, run the wizard from that folder: `cd "$env:USERPROFILE\.gemini\config\plugins\mateai-youtube"; python3 yt_studio.py setup`.
 
-**Standalone MCP config (Option C).** Use forward slashes or doubled backslashes in JSON, for example `"args": ["C:/Users/you/mateai-youtube-mcp/mcp_server.py"]`.
+**Standalone MCP config.** Use forward slashes or doubled backslashes in JSON, for example `"args": ["C:/Users/you/mateai-youtube-mcp/mcp_server.py"]`.
 
 **What differs from macOS**
 - **Login file privacy.** macOS and Linux get `0600` file permissions. Windows has no such modes (`os.chmod` only toggles read-only), so the plugin doesn't pretend: your token and client file are protected by living in your own user profile folder, which Windows by default lets only you, SYSTEM and administrators read. Anyone with an administrator account on the PC can read them, as with any file in your profile.
 - **MateAI Studio login sharing** (reusing the desktop app's YouTube login) is macOS-only for now; on Windows the plugin uses its own login from `/yt-setup`.
 
-### Exposed MCP Tools
+</details>
+
+<details>
+<summary><b>Linux</b> (untested)</summary>
+
+`/yt-setup` auto-opening the Google pages is macOS and Windows only. On Linux, use the [manual wizard](#manual-setup-wizard-any-client) (`python3 yt_studio.py setup`).
+
+</details>
+
+> **Rather skip the Google Cloud setup?** MateAI Studio is a desktop app built on this plugin: you sign in to YouTube with one click, without creating your own Google Cloud project. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateaistudio.com/)
+
+## Try it
+
+After setup, ask your AI:
+
+1. "Take a snapshot of my channel and show me the report." (runs `yt_channel_snapshot` and writes `report.html`)
+2. "Which of my last 5 Shorts had the highest swipe-away rate, and where did viewers leave?"
+3. "Do a dry run: upload `short.mp4` with `cover.png`, title it '…', and schedule it for Friday 18:00 my time."
+
+## Tools
 
 **YouTube**
 
-| Tool | Description |
+| Tool | What it does |
 |---|---|
-| `yt_channel_snapshot` | Fetch channel overview, Long-form uploads, Shorts stats, and update `report.html`. |
-| `yt_shorts_experiment_table` | Generate a Markdown table comparing Shorts retention, swipe-away rate, and views. |
-| `yt_video_details` | Inspect metadata and metrics for any 11-character YouTube `video_id`. |
-| `yt_upload_draft` | Upload a local MP4/MOV + cover image + full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment`, and **`publish_at` schedule**). |
-| `yt_update_video` | Update title, description, tags, privacy status, schedule time, thumbnail, or the `contains_synthetic_media` disclosure of an existing video; parts you don't change are not re-sent. |
-| `yt_post_comment` | Post a top-level comment (e.g. your `## Pinned comment` question) on a video. |
+| `yt_channel_snapshot` | Fetch channel overview, long-form uploads and Shorts stats, and update `report.html`. |
+| `yt_shorts_experiment_table` | Markdown table comparing Shorts retention, swipe-away rate and views. |
+| `yt_video_details` | Metadata, 100-point retention curve, drop-off points and traffic sources for an 11-character `video_id`. |
+| `yt_upload_draft` | Upload a local MP4/MOV + cover image with full Studio setup (`title`, `description`, `hashtags`, `tags`, `language`, `contains_synthetic_media`, `pinned_comment` and a **`publish_at` schedule**). |
+| `yt_update_video` | Update title, description, tags, privacy status, schedule time, thumbnail or the `contains_synthetic_media` disclosure of an existing video; parts you don't change are not re-sent. |
+| `yt_post_comment` | Post a top-level comment on a video. |
 | `yt_list_videos` | List/search your uploads (private and unlisted included) to find video IDs. |
 | `yt_list_comments` | Read top-level comment threads (with replies) on a video. |
 | `yt_reply_comment` | Reply publicly to a top-level comment. |
 | `yt_delete_video` | Permanently delete a video; refuses unless you pass its exact title. |
-
 | `yt_get_safety_settings` / `yt_set_safety_settings` | Show / choose which actions ask you first. Used by `/yt-safety`. |
 
-### Stay in control: `/yt-safety`
+**TikTok** (optional, needs the [TikTok setup](#tiktok-optional))
 
-Claude will always ask you before **deleting a video**. To make it ask before other things too, type `/yt-safety` in Claude and tick what you want to be asked about: uploading videos, changing a video's details, or posting and replying to comments. No files or settings to edit, and you can run it again any time to change your mind.
-
-When an action asks first, the plugin itself shows a confirmation box with exactly what's about to happen, and nothing happens until you click yes. Claude can't answer that box for you, so text hidden in a viewer's comment can't approve a delete. This needs a client that shows MCP confirmation dialogs (Claude Code 2.1.76 or later). In a client that can't, deleting a video and changing these settings are refused (delete in YouTube Studio instead), and the other actions fall back to Claude asking you in chat, which the plugin can't check.
-
-**Built-in limits (always on, not adjustable):** these back up the MateAI Terms of Service ban on spam-like commenting and protect the daily YouTube quota that all MateAI users share.
-- At most **20 comments and replies per hour** and **100 per 24 hours** (an upload's auto-posted comment counts too). The same text (ignoring case and spacing) can be posted at most **twice in 24 hours**, across all videos. When a limit is hit, nothing is posted and Claude is told when posting is allowed again. The count is kept in `comment_log.json` next to `safety.json` (timestamps and a hash of the text, not the text itself).
-- When YouTube reports the quota or rate limit is used up (`quotaExceeded` / `rateLimitExceeded`), the plugin stops immediately with a clear message instead of retrying. The quota resets at midnight Pacific time.
-
-**Preview before anything goes live:** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
-
-**TikTok (optional, needs the [TikTok setup](#tiktok-optional))**
-
-| Tool | Description |
+| Tool | What it does |
 |---|---|
 | `tiktok_channel_snapshot` | Fetch your TikTok profile stats and recent videos (views, likes, comments, shares) through TikTok's official API. |
 | `tiktok_upload_draft` | Send a local MP4/MOV to your TikTok app inbox and return the caption to paste, plus a reminder to switch on TikTok's AI-generated label. It does not publish for you. |
 | `cross_platform_shorts_table` | Markdown table that pairs each YouTube Short with the same video on TikTok (views, likes, comments, YouTube avg % viewed, TikTok shares). Videos that exist on only one platform get their own row. |
 
----
+**Dashboard: `/yt-dashboard`** (Claude Code 2.1.287+). Shows or hides a channel card above the prompt: total views, subscribers, video count, and your latest five videos with a viewed-vs-swiped bar. Desktop, VS Code and mobile draw it as a card; the terminal shows a text version. It redraws whenever `yt_channel_snapshot` runs, so the standalone `report.html` is optional.
 
-## Bundled YouTube Strategy & Creator Skills (Full Pipeline)
+## Safety: dry runs, confirmations and limits
 
-This plugin integrates the **YouTube Strategy & Creator Skill Suite** directly alongside the `mateai-youtube` MCP server, so your AI agent handles everything from niche research and hook writing to live Studio scheduling:
+**Preview before anything goes live.** `yt_upload_draft`, `yt_update_video` and `yt_post_comment` accept `dry_run: true`. They then upload, change and post nothing, need no sign-in, and return exactly what would be sent, with the schedule in your local time and a warning if `publish_at` is in the past or has no timezone. Ask your AI: "Do a dry run of this upload first."
 
-- **Production Pipeline Skills** (`yt-research`, `yt-ideation`, `yt-brief`, `yt-packaging`, `yt-outline`, plus `/yt-pipeline` command and `yt-scraper`, `channel-analyzer`, `idea-validator` agents) — created by **[Jeremy Longshore (`@jeremylongshore` / Intent Solutions)](https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy)** (`@intentsolutionsio/youtube-strategy`, MIT).
-- **14 Creator Sub-Skills & Playbooks** (`audit`, `seo`, `script`, `hook`, `thumbnail`, `strategy`, `calendar`, `shorts`, `analyze`, `repurpose`, `monetize`, `competitor`, `metadata`, `ideate`) — created by **[Daniel Agrici (`@AgriciDaniel`)](https://github.com/AgriciDaniel/claude-youtube)** (`claude-youtube`, MIT).
-- **Chapters, Comment Replies & Title Lint** (`yt-chapters`, `yt-comment`, `yt-title-lint`) — from **[Jake Schincariol (`@Jakeschincariol`)](https://github.com/Jakeschincariol/youtube-agent-skill)** (`youtube-agent-skill`, MIT). `yt-chapters` builds YouTube-valid chapters from an `.srt`/`.vtt`/Whisper transcript, `yt-comment` triages comments and drafts replies, and `yt-title-lint` checks a title and thumbnail as one pairing (renamed from `yt-package`). All three only write drafts; publishing stays with you or the MCP tools. They read an optional voice profile at `~/.claude/youtube/voice.md`.
-- **Live YouTube Studio Execution & Analytics MCP** (`yt_channel_snapshot`, `yt_shorts_experiment_table`, `yt_upload_draft`, `yt_update_video`, `yt_post_comment`, optional TikTok tools, interactive `report.html` dashboard & 1-command `setup` wizard) — built by **[MateAI (`@mateai-c6m`)](https://www.youtube.com/@mateai-c6m)**.
+**Choose what asks first: `/yt-safety`.** Claude always asks before **deleting a video**. Type `/yt-safety` to also be asked before uploading videos, changing a video's details, or posting and replying to comments. No files to edit, and you can run it again any time.
 
----
+When an action asks first, the plugin itself shows a confirmation box with exactly what's about to happen, and nothing happens until you click yes. Claude can't answer that box for you, so text hidden in a viewer's comment can't approve a delete. This needs a client that shows MCP confirmation dialogs (Claude Code 2.1.76 or later). In a client that can't, deleting a video and changing these settings are refused (delete in YouTube Studio instead), and the other actions fall back to Claude asking you in chat, which the plugin can't check.
 
-## Dashboard: `/yt-dashboard` (Claude Code 2.1.287+)
+**Built-in limits (always on, not adjustable).** These back up the MateAI Terms of Service ban on spam-like commenting and protect the daily YouTube quota that all MateAI users share.
+- At most **20 comments and replies per hour** and **100 per 24 hours** (an upload's auto-posted comment counts too). The same text (ignoring case and spacing) can be posted at most **twice in 24 hours**, across all videos. When a limit is hit, nothing is posted and Claude is told when posting is allowed again. The count is kept in `comment_log.json` next to `safety.json` (timestamps and a hash of the text, not the text itself).
+- When YouTube reports the quota or rate limit is used up (`quotaExceeded` / `rateLimitExceeded`), the plugin stops immediately with a clear message instead of retrying.
 
-Type **`/yt-dashboard`** to show or hide a channel card above the prompt: total views, subscribers, video count, and your latest five videos with a viewed-vs-swiped bar and its percentage. Desktop, VS Code and mobile draw it as a card; the terminal shows a text version. It reads the last `channel_snapshot.json`, and redraws whenever Claude runs `yt_channel_snapshot`, so the standalone `report.html` is optional.
+## YouTube API quota
 
-## Easy Setup: `/yt-setup` (Claude Code)
+Your own Google Cloud project gets **10,000 free YouTube Data API units per day**, reset at midnight Pacific time. What each action costs, per [Google's quota table](https://developers.google.com/youtube/v3/determine_quota_cost) (checked 2026-11-08):
+
+| Action | Data API calls | Units |
+|---|---|---|
+| Snapshot, list videos, video details, list comments | `*.list` | 1 per call |
+| Upload a video (`yt_upload_draft`) | `videos.insert` | Own bucket of 100 uploads/day, not the 10,000 units |
+| + custom cover | `videos.list` (waits for processing) + `thumbnails.set` | 50, plus 1 per processing check (at most 60) |
+| + pinned comment | `commentThreads.insert` | 50 |
+| Edit a video (`yt_update_video`) | `videos.list` + `videos.update` (+ `thumbnails.set`) | 51 (101 with a new cover) |
+| Post a comment / reply | `commentThreads.insert` / `comments.insert` | 50 |
+| Delete a video | `videos.list` + `videos.delete` | 51 |
+
+Retention, swipe-away and other analytics come from the YouTube Analytics API, which isn't part of these 10,000 units.
+
+## Easy setup: `/yt-setup`
 
 Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube account. You do this once. Everything stays on your computer; only Google sees your sign-in.
 
@@ -220,49 +224,76 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 
 **3. Sign in (your browser opens).** Pick your YouTube account. On "Google hasn't verified this app" click **Advanced**, then **Go to … (unsafe)**; this is your own app. Tick **every box**, click **Allow**. Claude Code then shows **"yt-setup: connected!"** and the "YouTube: not connected" status hint disappears.
 
-`/yt-setup` copies your client file into the plugin's data folder with `600` permissions (on Windows: your private user profile folder, see [Windows](#windows-1011)), never prints it, and never sees your Google password.
+`/yt-setup` copies your client file into the plugin's data folder with `600` permissions (on Windows: your private user profile folder), never prints it, and never sees your Google password.
 
-| Problem | Fix |
-| --- | --- |
-| It says the file is a **"web" client** | Create a new client and choose **Desktop app**. |
-| Browser shows **"Access blocked" / 403 access_denied** | Your email is not under **Test users**. Add it, then rerun `/yt-setup`. |
-| **"Login did not finish"** | The tab was closed early or a box was not ticked. Rerun `/yt-setup`. |
-| **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
-| **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
-| **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
-| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
-| Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
+### Manual setup wizard (any client)
 
-Not using Claude Code, or on an older version? Use the wizard below.
-
----
-
-## Unlock Private YouTube Studio Analytics & Draft Uploads ($0/mo)
-
-Google gives every developer **10,000 free quota units/day** on the YouTube Data API v3 and YouTube Analytics API v2. Because you run this locally for your own channel in "Testing" mode, **no Google app verification is required while the app stays in "Testing"** (the cost: Google expires the sign-in every 7 days, see the troubleshooting table above) and you keep 100% of your own private quota.
-
-Run the **1-Command Guided Setup Wizard**:
+Not using Claude Code 2.1.287+? Run the wizard:
 
 ```bash
 python3 yt_studio.py setup
 ```
 
-What `python3 yt_studio.py setup` does automatically:
-1. **Creates `.venv` & installs Google's OAuth libraries** automatically if not yet installed.
-2. **Auto-enables the YouTube APIs via `gcloud`** (if you have the `gcloud` CLI installed), or pops open the direct 1-click enablement pages.
-3. **Opens the exact Test User & Create Desktop Client screens** and **watches your `~/Downloads` folder in real time**—the instant you click **"Download JSON"** in your browser, the wizard automatically grabs `client_secret_*.json` from `~/Downloads`, moves it into `google_auth_secret/client_secret.json` (`0600` permissions, `.gitignore`d), launches your YouTube channel login, and opens your live `report.html` dashboard!
+Because you run this for your own channel with the Google app in "Testing" mode, **no Google app verification is needed** (the cost: Google expires the sign-in every 7 days). The wizard:
+1. **Creates `.venv` and installs Google's OAuth libraries** if they aren't installed yet.
+2. **Enables the YouTube APIs via `gcloud`** if you have the `gcloud` CLI, or opens the enablement pages.
+3. **Opens the Test User and Create Desktop Client pages and watches `~/Downloads`.** When you click **Download JSON**, it moves `client_secret_*.json` into `google_auth_secret/client_secret.json` (`0600`, `.gitignore`d), starts the YouTube sign-in and opens your `report.html` dashboard.
 
----
+For the Claude Code plugin on an older Claude Code, point the wizard at the plugin's data folder:
+
+```bash
+MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
+  python3 ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/<version>/yt_studio.py setup
+```
+
+Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
+
+### Public mode (no login, opt-in)
+
+Public stats for any channel work without API keys, but public page scraping is off by default. Opt in with `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`:
+
+```bash
+git clone https://github.com/mategog/mateai-youtube-mcp.git
+cd mateai-youtube-mcp
+python3 yt_studio.py snapshot --public --handle @mateai-c6m
+open report.html
+
+# Markdown table for Shorts A/B style experiments
+MATEAI_YT_PUBLIC_SCRAPE=1 python3 yt_studio.py experiment-table --handle @mateai-c6m
+```
+
+For your own channel, the official APIs above are the recommended default.
+
+## Privacy: what it runs, sends and fetches
+
+Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube (and to TikTok, only if you set up the optional TikTok connection), and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
+
+**The MCP server** (`mcp_server.py`, started by Claude Code as `python3 ${CLAUDE_PLUGIN_ROOT}/mcp_server.py`):
+- Calls Google's **YouTube Data API v3** and **YouTube Analytics API v2** with the scopes you approve at sign-in: read-only analytics, and optionally upload, edit metadata and post comments.
+- **Public mode (off by default):** fetches public `youtube.com` channel and video pages only when you opt in with `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`.
+- `yt_upload_draft` reads the video and cover files whose paths you give it and uploads them to your channel. `yt_update_video` and `yt_post_comment` change your video or post a comment, only when called.
+- Writes `channel_snapshot.json` and `report.html` (cached statistics for your own channel) to the plugin data folder.
+
+**The `/yt-setup` command** (a Claude Code mod in `hooks/`):
+- Looks for a `client_secret*.json` in the plugin data folder, your current project and `~/Downloads` (up to 5 folders deep), and copies a Desktop-app client into the data folder with `600` permissions. It never prints the file.
+- Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
+- Opens two Google Cloud pages (macOS `open`, Windows `rundll32 url.dll,FileProtocolHandler`) and starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
+- Reads your saved token only to check which permissions it holds.
+
+**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
+
+**With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
 
 ## TikTok (optional)
 
-Cross-post your Shorts and see how they do on both platforms. This uses TikTok's official, free developer API only: no cookies, no scraping. It never publishes for you; a video lands in your TikTok app inbox and you tap Post yourself. Everything stays on your machine, and the YouTube tools work the same whether or not you set this up.
-
-**What you can ask your AI**
+Cross-post your Shorts and see how they do on both platforms. This uses TikTok's official, free developer API only: no cookies, no scraping. It never publishes for you; a video lands in your TikTok app inbox and you tap Post yourself. The YouTube tools work the same whether or not you set this up.
 
 > "Send `exports/short.mp4` to my TikTok inbox with the caption from `planning/my-short-upload.md`."
 >
 > "Show my YouTube Shorts next to the same videos on TikTok."
+
+<details>
+<summary><b>Connect TikTok, command line and limits</b></summary>
 
 **Connect TikTok (once)**
 
@@ -301,41 +332,47 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 | Setup waits, then times out | The browser tab was closed. Rerun setup; it waits 5 minutes for the sign-in. |
 | Sign-in page rejects the redirect | The redirect URI in your TikTok app must be exactly `http://127.0.0.1:8765/callback/`. |
 | Channel handle is empty | The `user.info.profile` scope is missing. Enable it in your TikTok app and run setup again. |
----
 
-## What this plugin runs, sends and fetches
+</details>
 
-Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube (and to TikTok, only if you set up the optional TikTok connection), and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
+## Troubleshooting
 
-**The MCP server** (`mcp_server.py`, started by Claude Code as `python3 ${CLAUDE_PLUGIN_ROOT}/mcp_server.py`):
-- Calls Google's **YouTube Data API v3** and **YouTube Analytics API v2** with the scopes you approve at sign-in: read-only analytics, and optionally upload, edit metadata and post comments.
-- **Public mode (off by default):** fetches public `youtube.com` channel and video pages only when you opt in with `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`.
-- `yt_upload_draft` reads the video and cover files whose paths you give it and uploads them to your channel. `yt_update_video` and `yt_post_comment` change your video or post a comment, only when called.
-- Writes `channel_snapshot.json` and `report.html` (cached statistics for your own channel) to the plugin data folder.
+<details>
+<summary><b>YouTube setup problems and fixes</b></summary>
 
-**The `/yt-setup` command** (a Claude Code mod in `hooks/`):
-- Looks for a `client_secret*.json` in the plugin data folder, your current project and `~/Downloads` (up to 5 folders deep), and copies a Desktop-app client into the data folder with `600` permissions. It never prints the file.
-- Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
-- Opens two Google Cloud pages (macOS `open`, Windows `rundll32 url.dll,FileProtocolHandler`) and starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
-- Reads your saved token only to check which permissions it holds.
-- Works on macOS and Windows; on Linux (untested) use the manual wizard below.
+| Problem | Fix |
+| --- | --- |
+| It says the file is a **"web" client** | Create a new client and choose **Desktop app**. |
+| Browser shows **"Access blocked" / 403 access_denied** | Your email is not under **Test users**. Add it, then rerun `/yt-setup`. |
+| **"Login did not finish"** | The tab was closed early or a box was not ticked. Rerun `/yt-setup`. |
+| **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
+| **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
+| **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
+| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
+| Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
 
-**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder, see [Windows](#windows-1011)). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
+</details>
 
-**With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
+## Bundled skills and credits
 
----
+The plugin ships the MCP server together with a YouTube strategy and creator skill suite, so your AI can go from niche research and hook writing to live Studio scheduling:
 
-## Support & Channel
+- **Live YouTube Studio execution and analytics** (the MCP tools above, `report.html` dashboard and `setup` wizard): built by **[MateAI (`@mateai-c6m`)](https://www.youtube.com/@mateai-c6m)**.
+- **Production pipeline skills** (`yt-research`, `yt-ideation`, `yt-brief`, `yt-packaging`, `yt-outline`, plus the `/yt-pipeline` command and `yt-scraper`, `channel-analyzer`, `idea-validator` agents): created by **[Jeremy Longshore (`@jeremylongshore` / Intent Solutions)](https://github.com/jeremylongshore/tons-of-skills-marketplace/tree/main/plugins/productivity/youtube-strategy)** (`@intentsolutionsio/youtube-strategy`, MIT).
+- **14 creator sub-skills and playbooks** (`audit`, `seo`, `script`, `hook`, `thumbnail`, `strategy`, `calendar`, `shorts`, `analyze`, `repurpose`, `monetize`, `competitor`, `metadata`, `ideate`): created by **[Daniel Agrici (`@AgriciDaniel`)](https://github.com/AgriciDaniel/claude-youtube)** (`claude-youtube`, MIT).
+- **Chapters, comment replies and title lint** (`yt-chapters`, `yt-comment`, `yt-title-lint`): from **[Jake Schincariol (`@Jakeschincariol`)](https://github.com/Jakeschincariol/youtube-agent-skill)** (`youtube-agent-skill`, MIT). `yt-chapters` builds YouTube-valid chapters from an `.srt`/`.vtt`/Whisper transcript, `yt-comment` triages comments and drafts replies, and `yt-title-lint` checks a title and thumbnail as one pairing (renamed from `yt-package`). All three only write drafts; publishing stays with you or the MCP tools. They read an optional voice profile at `~/.claude/youtube/voice.md`.
 
-If this saved you from paying for a monthly "Creator OS" subscription:
+## Support
+
+If this saved you from paying for a monthly creator tool:
+- **Star the repo** so other creators can find it.
 - **Sponsor on GitHub:** [github.com/sponsors/mategog](https://github.com/sponsors/mategog)
-- **Subscribe on YouTube:** [MateAI (@mateai-c6m)](https://www.youtube.com/@mateai-c6m) — real AI build-logs, measured costs, no hype.
+- **Subscribe on YouTube:** [MateAI (@mateai-c6m)](https://www.youtube.com/@mateai-c6m): real AI build-logs, measured costs, no hype.
 - **Buy Mate a Coffee:** [buymeacoffee.com/mateai](https://buymeacoffee.com/mateai)
 
-## License & Anti-Resale Protection
+## License
 
 Licensed under **Apache License 2.0 with Commons Clause Restriction v1.0** ([LICENSE](LICENSE)). This is a *source-available* license, not an OSI open-source one; GitHub may label the repository "Apache-2.0" because of the base text.
 
-- **Free for creators & developers:** You may freely use, modify, and share this tool for your own YouTube channels (including monetized channels).
-- **No commercial resale / paid SaaS wrapping:** You may **not** sell this software, bundle it into a paid product, or host it as a paid/managed MCP service without a commercial license from MateAI.
+- **Free for creators and developers:** you may use, modify and share this tool for your own YouTube channels (including monetized channels).
+- **No commercial resale or paid SaaS wrapping:** you may **not** sell this software, bundle it into a paid product, or host it as a paid/managed MCP service without a commercial license from MateAI.

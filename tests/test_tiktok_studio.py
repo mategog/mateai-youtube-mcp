@@ -291,5 +291,75 @@ class TestTikTokPureLogic(unittest.TestCase):
             self.assertEqual(json.loads(out["content"][0]["text"])["channel"]["handle"], "@mateai")
 
 
+class TestTikTokDraftStatus(unittest.TestCase):
+    def _run(self, data, publish_id="v_inbox_file~v2.123"):
+        from unittest.mock import patch
+        from tiktok_studio import fetch_tiktok_post_status
+        with patch("tiktok_studio.get_valid_tiktok_token", return_value="SECRET") as tok, \
+             patch("tiktok_studio._http_json", return_value={"data": data, "error": {"code": "ok"}}) as http:
+            return fetch_tiktok_post_status(publish_id), tok, http
+
+    def test_each_state_maps_to_meaning_and_body_is_sent(self):
+        cases = {
+            "SEND_TO_USER_INBOX": "System notifications",
+            "PROCESSING_UPLOAD": "processing",
+            "PROCESSING_DOWNLOAD": "processing",
+            "PUBLISH_COMPLETE": "Posted",
+        }
+        for state, text in cases.items():
+            out, _, http = self._run({"status": state})
+            self.assertEqual(out["state"], state)
+            self.assertIsNone(out["fail_reason"])
+            self.assertIn(text, out["meaning"])
+            self.assertEqual(http.call_args.kwargs["body"], {"publish_id": "v_inbox_file~v2.123"})
+            self.assertIn("status/fetch", http.call_args.args[0])
+
+    def test_failed_carries_tiktok_reason(self):
+        out, _, _ = self._run({"status": "FAILED", "fail_reason": "file_format_check_failed"})
+        self.assertEqual(out["state"], "FAILED")
+        self.assertEqual(out["fail_reason"], "file_format_check_failed")
+        self.assertIn("file_format_check_failed", out["meaning"])
+
+    def test_unknown_state_is_reported_not_hidden(self):
+        out, _, _ = self._run({"status": "SOMETHING_NEW"})
+        self.assertIn("SOMETHING_NEW", out["meaning"])
+
+    def test_http_error_is_clear_and_leaks_no_token(self):
+        import urllib.error
+        from unittest.mock import patch
+        from tiktok_studio import fetch_tiktok_post_status
+        err = urllib.error.HTTPError("https://x", 401, "Unauthorized", {}, None)
+        with patch("tiktok_studio.get_valid_tiktok_token", return_value="SECRET"), \
+             patch("tiktok_studio._http_json", side_effect=err):
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                fetch_tiktok_post_status("abc")
+        cm.exception.close()
+        self.assertIn("401", str(cm.exception))
+        self.assertNotIn("SECRET", str(cm.exception))
+
+    def test_empty_publish_id_refused_with_no_calls(self):
+        from unittest.mock import patch
+        from tiktok_studio import fetch_tiktok_post_status
+        for bad in ("", "   ", None, 5):
+            with patch("tiktok_studio.get_valid_tiktok_token") as tok, patch("tiktok_studio._http_json") as http:
+                with self.assertRaises(ValueError):
+                    fetch_tiktok_post_status(bad)
+                self.assertEqual(tok.call_count + http.call_count, 0)
+
+    def test_tool_is_registered_read_only_and_not_confirm_gated(self):
+        import json
+        from unittest.mock import patch
+        from mcp_server import CONFIRMABLE, TOOLS, _handle_tool_call
+        tool = next(t for t in TOOLS if t["name"] == "tiktok_draft_status")
+        self.assertTrue(tool["annotations"]["readOnlyHint"])
+        self.assertEqual(tool["inputSchema"]["required"], ["publish_id"])
+        self.assertNotIn("tiktok_draft_status", CONFIRMABLE)
+        with patch("mcp_server.fetch_tiktok_post_status",
+                   return_value={"state": "PUBLISH_COMPLETE", "fail_reason": None, "meaning": "Posted."}) as f:
+            out = _handle_tool_call("tiktok_draft_status", {"publish_id": "abc"})
+        f.assert_called_once_with("abc")
+        self.assertEqual(json.loads(out["content"][0]["text"])["state"], "PUBLISH_COMPLETE")
+
+
 if __name__ == "__main__":
     unittest.main()

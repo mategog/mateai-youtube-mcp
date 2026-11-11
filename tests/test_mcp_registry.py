@@ -20,7 +20,7 @@ class RegistryTests(unittest.TestCase):
         names = [t["name"] for t in mcp_server.TOOLS]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), set(mcp_server._HANDLERS))
-        self.assertEqual(len(names), 15)
+        self.assertEqual(len(names), 16)
 
     def test_tools_list_matches_listed_tools(self):
         (resp,) = _run_main({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})

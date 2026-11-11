@@ -42,7 +42,8 @@ Use this skill whenever the user asks to:
 ### TikTok tools (same server)
 7. `tiktok_channel_snapshot()`: Official TikTok Display API stats for the connected account (public videos only).
 8. `tiktok_upload_draft(video_path, spec_path, title, hashtags)`: Sends a Short to the TikTok inbox as a draft; the owner finishes the post in the app.
-9. `cross_platform_shorts_table(yt_handle, yt_force_public)`: YouTube Shorts vs TikTok comparison table.
+9. `tiktok_draft_status(publish_id)`: Read-only. Where an earlier TikTok upload stands (inbox, processing, posted, or failed with TikTok's reason).
+10. `cross_platform_shorts_table(yt_handle, yt_force_public)`: YouTube Shorts vs TikTok comparison table.
 
 For rules, limits and what is not built yet, read `skills/tiktok-studio/SKILL.md`.
 

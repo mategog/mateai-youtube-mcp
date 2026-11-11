@@ -24,6 +24,7 @@ from tiktok_studio import (
     TIKTOK_HISTORY_FILE,
     append_tiktok_history,
     build_cross_platform_table,
+    fetch_tiktok_post_status,
     fetch_tiktok_snapshot,
     upload_tiktok_inbox_draft,
 )
@@ -818,6 +819,37 @@ def _do_tiktok_upload_draft(args: dict[str, Any]) -> dict[str, Any]:
         title=args.get("title"),
         hashtags=args.get("hashtags"),
     ))
+
+
+@_tool(
+    {
+        "name": "tiktok_draft_status",
+        "description": (
+            "Check where a video sent with tiktok_upload_draft stands, using its publishId "
+            "(/v2/post/publish/status/fetch/). Returns state, fail_reason and a one-line plain meaning. Read-only."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "publish_id": {
+                    "type": "string",
+                    "description": "The publishId returned by tiktok_upload_draft.",
+                },
+            },
+            "required": ["publish_id"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Check TikTok Draft Status",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
+    }
+)
+def _do_tiktok_draft_status(args: dict[str, Any]) -> dict[str, Any]:
+    return _json_result(fetch_tiktok_post_status(args.get("publish_id")))
 
 
 @_tool(

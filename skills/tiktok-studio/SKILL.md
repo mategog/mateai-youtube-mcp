@@ -15,6 +15,7 @@ Written from the connector's own code plus a read-through of three open-source T
 |---|---|---|
 | `tiktok_channel_snapshot` | Profile counts plus all public videos (views, likes, comments, shares, duration, date). Caches to `tiktok_snapshot.json` (overwritten each call) and appends one counts row to `tiktok_history.jsonl` (kept, owner-only file). | local files only |
 | `tiktok_upload_draft(video_path, spec_path?, title?, hashtags?)` | Uploads an MP4/MOV to the creator's TikTok inbox and returns the caption plus the AI-label reminder. | yes, private draft |
+| `tiktok_draft_status(publish_id)` | Asks TikTok where an upload stands (inbox, processing, posted, failed with reason). | no |
 | `cross_platform_shorts_table` | Markdown table of YouTube Shorts vs TikTok. | no |
 
 ## Rules that save a failed attempt
@@ -60,7 +61,7 @@ Planned from the review of the open-source servers, in priority order:
 
 1. **Stats history: built.** Each `tiktok_channel_snapshot` call appends a dated row (followers, likes, per-video counts) to `tiktok_history.jsonl`. Nothing reads it yet: a tool that shows growth between two snapshots is the follow-up, and `cross_platform_shorts_table` still shows only the latest counts. History starts from the first snapshot after this change. `cross_platform_shorts_table` does not record rows.
 2. **`tiktok_studio_csv_import`.** Merge the Studio CSV export (watch time, completion) into `cross_platform_shorts_table`. Needs a sample export first to learn the real column names.
-3. **Publish-status check** after each upload (`post/publish/status/fetch` accepts `video.upload`), and a `dry_run` flag on `tiktok_upload_draft` that returns the planned chunks and payload without sending.
+3. **Publish-status check: built** as `tiktok_draft_status`. Still open: a `dry_run` flag on `tiktok_upload_draft` that returns the planned chunks and payload without sending.
 4. **Local upload journal.** Append an intent record before the init request and an outcome record afterwards, so "did it actually upload?" is answerable after a crash. Never let a journal failure block an upload.
 5. **Health check** backed by the basic profile endpoint (works in draft mode), not `creator_info`.
 6. **Refresh-token write-back is already done** (`_save_token_payload`). TikTok rotates refresh tokens on every refresh, so keep it that way and re-authorize before the stored `refresh_expires_at`.

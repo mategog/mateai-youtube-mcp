@@ -170,6 +170,7 @@ After setup, ask your AI:
 | Tool | What it does |
 |---|---|
 | `tiktok_channel_snapshot` | Fetch your TikTok profile stats and recent videos (views, likes, comments, shares) through TikTok's official API. |
+| `tiktok_draft_status` | Check where a video sent with `tiktok_upload_draft` stands (waiting in the inbox, processing, posted, or failed with TikTok's reason). Read-only. |
 | `tiktok_upload_draft` | Send a local MP4/MOV to your TikTok app inbox and return the caption to paste, plus a reminder to switch on TikTok's AI-generated label. It does not publish for you. |
 | `cross_platform_shorts_table` | Markdown table that pairs each YouTube Short with the same video on TikTok (views, likes, comments, YouTube avg % viewed, TikTok shares). Videos that exist on only one platform get their own row. |
 

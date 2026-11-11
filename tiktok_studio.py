@@ -52,6 +52,7 @@ VIDEO_LIST_URL = (
     "?fields=id,title,video_description,create_time,duration,view_count,like_count,comment_count,share_count,cover_image_url,share_url"
 )
 INBOX_INIT_URL = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
+PUBLISH_STATUS_URL = "https://open.tiktokapis.com/v2/post/publish/status/fetch/"
 
 SINGLE_CHUNK_MAX_BYTES = 64_000_000
 MULTI_CHUNK_SIZE_BYTES = 32_000_000
@@ -575,6 +576,34 @@ def upload_tiktok_inbox_draft(
         "aiLabelReminder": AI_LABEL_REMINDER,
         "deliveryNote": INBOX_DELIVERY_NOTE,
     }
+
+
+TIKTOK_STATUS_MEANING = {
+    "SEND_TO_USER_INBOX": "Waiting in the TikTok app > Inbox > System notifications.",
+    "PROCESSING_UPLOAD": "Still processing the upload.",
+    "PROCESSING_DOWNLOAD": "Still processing the upload.",
+    "PUBLISH_COMPLETE": "Posted.",
+}
+
+
+def fetch_tiktok_post_status(
+    publish_id: str,
+    token_file: Path = TIKTOK_TOKEN_FILE,
+    client_file: Path = TIKTOK_CLIENT_FILE,
+) -> dict[str, Any]:
+    """Read-only: ask TikTok where an earlier upload (its publishId) stands."""
+    if not isinstance(publish_id, str) or not publish_id.strip():
+        raise ValueError("publish_id must be a non-empty string (the publishId from tiktok_upload_draft).")
+    token = get_valid_tiktok_token(token_file=token_file, client_file=client_file)
+    resp = _http_json(PUBLISH_STATUS_URL, token=token, body={"publish_id": publish_id.strip()})
+    data = resp.get("data") or {}
+    state = str(data.get("status") or "UNKNOWN")
+    fail_reason = data.get("fail_reason") or None
+    if state == "FAILED":
+        meaning = f"Failed: {fail_reason or 'TikTok gave no reason'}."
+    else:
+        meaning = TIKTOK_STATUS_MEANING.get(state, f"TikTok reported an unrecognised state: {state}.")
+    return {"state": state, "fail_reason": fail_reason, "meaning": meaning}
 
 
 # ---------------------------------------------------------------------------

@@ -62,6 +62,20 @@ const loginState = async ($: Api, p: Paths): Promise<'ok' | 'scopes' | 'expired'
   }
 }
 
+// MateAI Studio's YouTube login (macOS Keychain). The Python side uses it before the plugin's own login,
+// so one Connect covers both. No -w: this only asks whether the item exists, never reads the token,
+// so macOS shows no prompt. MATEAI_DESKTOP_LOGIN=off turns it off, as in yt_auth.py.
+const hasAppLogin = async ($: Api): Promise<boolean> => {
+  const off = ['off', '0', 'false'].includes(((await $.env.get('MATEAI_DESKTOP_LOGIN')) ?? '').trim().toLowerCase())
+  if (off || !(await $.fs.exists('/usr/bin/security'))) return false
+  const found = await $.process.run(
+    ['/usr/bin/security', 'find-generic-password', '-s', 'dev.mateai.desktop', '-a', 'google-oauth-token'],
+    { timeoutMs: 10000 },
+  ).catch(() => undefined)
+
+  return found?.exitCode === 0
+}
+
 const pluginRoot = async ($: Api, p: Paths): Promise<string | undefined> => {
   const base = `${p.home}/.claude/plugins/cache/mateai-youtube-mcp/yt-studio`
   if (!(await $.fs.exists(base))) return undefined
@@ -168,7 +182,7 @@ const registerSetup: Register = on => {
     await $.command.register(dashboardCommand)
     projectDir = e.cwd
     const p = await paths($)
-    if ((await loginState($, p)) !== 'ok') $.ui.status('YouTube: not connected, run /yt-setup')
+    if ((await loginState($, p)) !== 'ok' && !(await hasAppLogin($))) $.ui.status('YouTube: not connected, run /yt-setup')
 
     return next(e)
   })
@@ -180,6 +194,12 @@ const registerSetup: Register = on => {
       $.ui.status(undefined)
 
       return { text: 'Already connected. Nothing to do. (To log in again, delete the .tokens folder in the yt-studio data folder and rerun /yt-setup.)' }
+    }
+
+    if (await hasAppLogin($)) {
+      $.ui.status(undefined)
+
+      return { text: 'Already connected through the MateAI Studio app; this plugin uses that login. To sign in again or switch accounts, open MateAI Studio and click Connect YouTube.' }
     }
 
     const root = await pluginRoot($, p)

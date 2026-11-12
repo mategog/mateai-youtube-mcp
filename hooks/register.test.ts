@@ -88,12 +88,87 @@ test('refuses a client file of the wrong type without copying it', async ($, on)
   expect(out.text).toMatch(/"web" client/)
 })
 
-test('one session.start registers both /yt-setup and /yt-dashboard', async ($, on) => {
+test('one session.start registers /yt-setup, /yt-disconnect and /yt-dashboard', async ($, on) => {
   registered.length = 0
   stub(on, {})
   await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
 
-  expect([...registered].sort()).toEqual(['yt-dashboard', 'yt-setup'])
+  expect([...registered].sort()).toEqual(['yt-dashboard', 'yt-disconnect', 'yt-setup'])
+})
+
+test('/yt-setup when connected points to /yt-disconnect, not the manual delete', async ($, on) => {
+  stub(on, { [`${DATA}/.tokens/token.json`]: TOKEN })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: '' })
+
+  expect(out.text).toMatch(/\/yt-disconnect/)
+  expect(out.text).not.toMatch(/delete the \.tokens/)
+})
+
+// Runs /yt-disconnect; the Python helper (yt_auth.disconnect) answers with `reply` on stdout.
+const runDisconnect = async ($: any, on: any, files: Record<string, string>, reply: string) => {
+  const hints: Array<string | undefined> = []
+  stub(on, { ...files, [PLUGIN]: '', [`${DATA}/.venv/bin/python`]: '' }, hints)
+  const runs: Array<{ argv: string[]; env?: Record<string, string> }> = []
+  on('process.run', (_: unknown, e: { argv: string[]; init?: { env?: Record<string, string> } }) => {
+    runs.push({ argv: e.argv, env: e.init?.env })
+
+    return { value: { exitCode: 0, stdout: reply, stderr: '' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+  hints.length = 0
+  const out = await $.command.run({ command: 'yt-disconnect', args: '' })
+
+  return { out, runs, hints }
+}
+
+test('/yt-disconnect with nothing connected says so and runs nothing', async ($, on) => {
+  const { out, runs } = await runDisconnect($, on, {}, '')
+
+  expect(out.text).toMatch(/not connected/)
+  expect(runs.length).toBe(0)
+})
+
+test('/yt-disconnect revokes and deletes through yt_auth.disconnect, then shows "not connected"', async ($, on) => {
+  const { out, runs, hints } = await runDisconnect(
+    $, on, { [`${DATA}/.tokens/token.json`]: TOKEN }, '{"had_login": true, "revoked": true}\n',
+  )
+
+  expect(runs.length).toBe(1)
+  expect(runs[0].argv[0]).toBe(`${DATA}/.venv/bin/python`)
+  expect(runs[0].argv.join(' ')).toMatch(/yt_auth\.disconnect\(\)/)
+  expect(runs[0].env?.MATEAI_YT_HOME).toBe(DATA)
+  expect(out.text).toMatch(/Google revoked access/)
+  expect(out.text).toMatch(/\/yt-setup/)
+  expect(out.text).toMatch(/pick the right account/)
+  expect(hints).toContain('YouTube: not connected, run /yt-setup')
+})
+
+test('/yt-disconnect when Google does not confirm: login still removed, honest message', async ($, on) => {
+  const { out, hints } = await runDisconnect(
+    $, on, { [`${DATA}/.tokens/token.json`]: TOKEN }, '{"had_login": true, "revoked": false}\n',
+  )
+
+  expect(out.text).toMatch(/removed from this computer/)
+  expect(out.text).toMatch(/did not confirm/)
+  expect(out.text).toMatch(/myaccount\.google\.com\/permissions/)
+  expect(out.text).not.toMatch(/Google revoked access/)
+  expect(hints).toContain('YouTube: not connected, run /yt-setup')
+})
+
+test('/yt-disconnect when the helper fails does not claim success', async ($, on) => {
+  const hints: Array<string | undefined> = []
+  stub(on, { [`${DATA}/.tokens/token.json`]: TOKEN, [PLUGIN]: '' }, hints)
+  on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: 'boom' } }))
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+  hints.length = 0
+
+  const out = await $.command.run({ command: 'yt-disconnect', args: '' })
+
+  expect(out.text).toMatch(/Could not disconnect/)
+  expect(out.text).toMatch(/myaccount\.google\.com\/permissions/)
+  expect(hints.length).toBe(0)
 })
 
 // MateAI Studio's login: /usr/bin/security exists and finds the app's Keychain item.

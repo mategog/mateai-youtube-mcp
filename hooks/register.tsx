@@ -140,6 +140,56 @@ const LOGIN_CODE = [
   'print("LOGIN_OK")',
 ].join('\n')
 
+const DISCONNECT_CODE = [
+  'import yt_auth, json',
+  'print(json.dumps(yt_auth.disconnect()))',
+].join('\n')
+
+const NOT_CONNECTED = 'YouTube is not connected. Nothing to do.'
+const STUDIO_LOGIN = 'This plugin uses your MateAI Studio login. To disconnect it, open MateAI Studio and disconnect YouTube there.'
+const PERMISSIONS = 'https://myaccount.google.com/permissions'
+
+// Revokes the plugin's own login at Google (best effort) and deletes it; yt_auth.disconnect() does both.
+const disconnect = async ($: Api) => {
+  const p = await paths($)
+  const appLogin = await hasAppLogin($)
+  const keyring = ((await $.env.get('MATEAI_TOKEN_BACKEND')) ?? '').trim().toLowerCase() === 'keyring'
+  if (!keyring && !(await $.fs.exists(p.token))) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
+
+  const root = await pluginRoot($, p)
+  if (root === undefined) {
+    return { text: 'The yt-studio plugin is not installed. Install it first with: /plugin install yt-studio@mateai-youtube-mcp' }
+  }
+  const python = (await $.fs.exists(p.venvPython)) ? p.venvPython : 'python3'
+  const run = await $.process.run(
+    [python, '-c', DISCONNECT_CODE],
+    { cwd: root, env: { MATEAI_YT_HOME: p.data }, timeoutMs: 60000 },
+  ).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
+  let result: { had_login?: boolean; revoked?: boolean } | undefined
+  try {
+    result = JSON.parse(run.stdout.trim().split('\n').pop() ?? '')
+  } catch {}
+  if (run.exitCode !== 0 || result === undefined) {
+    return {
+      text: `Could not disconnect: ${run.stderr.trim().slice(-200)}\nTo do it by hand, delete the .tokens folder in ${p.data} and remove access at ${PERMISSIONS}.`,
+    }
+  }
+  if (!result.had_login) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
+
+  if (!appLogin) $.ui.status('YouTube: not connected, run /yt-setup')
+
+  return {
+    text: [
+      result.revoked
+        ? 'Disconnected. Google revoked access and the saved login was removed from this computer.'
+        : `The saved login was removed from this computer, but Google did not confirm the revoke (offline, or the login was already invalid). To be sure, remove access at ${PERMISSIONS}.`,
+      appLogin
+        ? `Note: ${STUDIO_LOGIN}`
+        : 'To connect another channel, run /yt-setup. Google may pre-select the account you used last, so pick the right account and channel in the browser.',
+    ].join('\n'),
+  }
+}
+
 const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' | 'expired', force = false) => {
   const env = { MATEAI_YT_HOME: p.data }
   if (!(await $.fs.exists(p.venvPython))) {
@@ -179,6 +229,10 @@ const registerSetup: Register = on => {
       name: 'yt-setup',
       description: 'Connect the yt-studio plugin to your YouTube account (one-time)',
     })
+    await $.command.register({
+      name: 'yt-disconnect',
+      description: 'Sign the yt-studio plugin out of YouTube and revoke its access at Google',
+    })
     await $.command.register(dashboardCommand)
     projectDir = e.cwd
     const p = await paths($)
@@ -187,13 +241,15 @@ const registerSetup: Register = on => {
     return next(e)
   })
 
+  on('command.run', { command: 'yt-disconnect' }, async $ => disconnect($))
+
   on('command.run', { command: 'yt-setup' }, async $ => {
     const p = await paths($)
     const state = await loginState($, p)
     if (state === 'ok') {
       $.ui.status(undefined)
 
-      return { text: 'Already connected. Nothing to do. (To log in again, delete the .tokens folder in the yt-studio data folder and rerun /yt-setup.)' }
+      return { text: 'Already connected. To sign out or switch to another channel, run /yt-disconnect, then /yt-setup.' }
     }
 
     if (await hasAppLogin($)) {
@@ -256,7 +312,7 @@ const registerSetup: Register = on => {
 }
 
 // A plugin names exactly one hooks module in hooks.json, so this entry point registers both parts:
-// /yt-setup (above) and /yt-dashboard (dashboard.tsx).
+// /yt-setup and /yt-disconnect (above) and /yt-dashboard (dashboard.tsx).
 export const register: Register = (on, options) => {
   registerSetup(on, options)
   registerDashboard(on, options)

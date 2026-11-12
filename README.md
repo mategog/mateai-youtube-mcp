@@ -246,7 +246,7 @@ You can sign in through your own Google Cloud project instead, for example to ha
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project and enable **YouTube Data API v3** and **YouTube Analytics API**.
 2. Page "Audience": click **Add users** under **Test users**, enter your YouTube email, **Save**.
 3. Page "Create OAuth client": **Application type = Desktop app** (not "Web application"), any name, **Create**, then **Download JSON**.
-4. Save the file as `google_auth_secret/client_secret.json` in the plugin's data folder (`~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`), then run `/yt-setup` (delete the `.tokens` folder first if you were already connected).
+4. Save the file as `google_auth_secret/client_secret.json` in the plugin's data folder (`~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`), then run `/yt-setup` (run `/yt-disconnect` first if you were already connected).
 
 On Google's sign-in, "Google hasn't verified this app" then appears: click **Advanced**, then **Go to … (unsafe)**; this is your own app. With your own app in "Testing" mode Google expires the sign-in every 7 days.
 
@@ -285,8 +285,9 @@ With the built-in client, your API calls run under the author's Google Cloud pro
 - Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
 - Starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
 - Reads your saved token only to check which permissions it holds.
+- `/yt-disconnect` sends the saved token to Google's revoke endpoint (`https://oauth2.googleapis.com/revoke`, in the request body), then deletes it. MateAI Studio's login is never touched.
 
-**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`.tokens/token.json`, plus `client_secret.json` if you use your own client, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
+**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`.tokens/token.json`, plus `client_secret.json` if you use your own client, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder). To sign out, or to switch to another channel, type **`/yt-disconnect`**: it revokes the plugin's access at Google and deletes `.tokens/` (your own `client_secret.json` stays); then run `/yt-setup` and pick the right account in the browser. If Google can't be reached, it still deletes the login and tells you so. Manual fallback: delete the `.tokens` folder and revoke access at <https://myaccount.google.com/permissions>.
 
 **With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
 
@@ -363,7 +364,7 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 | **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
 | **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
 | Asked to log in again after about a week, or "Your YouTube login expired" | Only with your own Google client: Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
-| Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
+| Start over, or switch channel | Run `/yt-disconnect`, then `/yt-setup`. (By hand: delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens` and rerun `/yt-setup`.) |
 
 </details>
 

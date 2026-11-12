@@ -328,6 +328,52 @@ def get_oauth_credentials(
     return creds
 
 
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+
+
+def _revoke_at_google(token: str) -> bool:
+    """True only when Google answers 200; the token goes in the POST body, never the URL."""
+    import urllib.parse
+    import urllib.request
+
+    req = urllib.request.Request(
+        REVOKE_URL,
+        data=urllib.parse.urlencode({"token": token}).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=yt_common.SSL_CONTEXT) as resp:
+            return resp.status == 200
+    except OSError:  # offline, or HTTPError (a URLError subclass) for an already-invalid token
+        return False
+
+
+def disconnect() -> dict:
+    """Revoke this plugin's saved login at Google (best effort), then delete it locally either way.
+
+    MateAI Studio's own login and the user's client_secret.json are left alone."""
+    use_keyring = _use_keyring()
+    stored = _keyring_get() if use_keyring else (
+        TOKEN_FILE.read_text(encoding="utf-8") if TOKEN_FILE.exists() else None
+    )
+    revoked = False
+    if stored:
+        try:
+            info = json.loads(stored)
+            token = info.get("refresh_token") or info.get("token")
+        except (ValueError, AttributeError):
+            token = None  # unreadable token file: nothing to revoke, still delete it
+        if token:
+            revoked = _revoke_at_google(token)
+        if use_keyring:
+            _keyring().delete_password(KEYRING_SERVICE, KEYRING_USER)
+        else:
+            TOKEN_FILE.unlink(missing_ok=True)
+    _expired_marker().unlink(missing_ok=True)
+    return {"had_login": bool(stored), "revoked": revoked}
+
+
 def _quota_kwargs() -> dict:
     """Count Data API calls for MateAI Studio's quota meter; plugin users (who also have MATEAI_YT_HOME) skip it."""
     if not _launched_by_desktop():

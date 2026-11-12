@@ -1,8 +1,10 @@
 # Privacy Policy — MateAI YouTube Studio plugin (yt-studio)
 
-Last updated: 2026-11-03
+Last updated: 2026-11-12
 
 This plugin runs entirely on your own computer. It has no server of its own, and the author (MateAI) receives no data from it.
+
+If you sign in with the plugin's built-in Google client, your YouTube API calls run under MateAI's Google Cloud project. Google then shows MateAI aggregate usage numbers for that project, such as request and error counts. It does not show MateAI your channel data, videos or login, and your login token stays on your computer. If you use your own Google Cloud client instead, those numbers stay in your project.
 
 ## What it accesses
 

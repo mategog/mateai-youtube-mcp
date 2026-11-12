@@ -137,7 +137,7 @@ For the private Studio analytics, run the wizard from that folder: `cd "$env:USE
 
 </details>
 
-> **Rather skip the Google Cloud setup?** MateAI Studio is a desktop app built on this plugin: you sign in to YouTube with one click, without creating your own Google Cloud project. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateaistudio.com/)
+> **Prefer a desktop app?** MateAI Studio is a desktop app built on this plugin, with the same one-click YouTube sign-in. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateaistudio.com/)
 
 ## Try it
 
@@ -269,6 +269,8 @@ For your own channel, the official APIs above are the recommended default.
 ## Privacy: what it runs, sends and fetches
 
 Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube (and to TikTok, only if you set up the optional TikTok connection), and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
+
+With the built-in client, your API calls run under the author's Google Cloud project, so Google shows the author aggregate usage numbers for that project (such as request and error counts). It does not show your channel data, videos or login. With [your own client](#use-your-own-google-cloud-client-optional-own-quota) even those numbers stay in your project.
 
 **The MCP server** (`mcp_server.py`, started by Claude Code as `python3 ${CLAUDE_PLUGIN_ROOT}/mcp_server.py`):
 - Calls Google's **YouTube Data API v3** and **YouTube Analytics API v2** with the scopes you approve at sign-in: read-only analytics, and optionally upload, edit metadata and post comments.

@@ -75,21 +75,34 @@ def _keyring_set(token_json: str) -> None:
     _keyring().set_password(KEYRING_SERVICE, KEYRING_USER, token_json)
 
 
+# The verified MateAI Studio Desktop client, shipped with the plugin in Google's "Download JSON" format.
+BUILTIN_CLIENT_FILE = yt_common.HERE / "oauth_client.json"
+
+
 def _builtin_client_config() -> dict | None:
-    """Shared Desktop client from MATEAI_OAUTH_CLIENT_ID/_SECRET (spike: env; a build would embed it)."""
+    """Shared Desktop client: MATEAI_OAUTH_CLIENT_ID/_SECRET if set, else the bundled oauth_client.json.
+
+    None when neither gives a client_id and client_secret (file missing or not a Desktop client)."""
     client_id = os.environ.get("MATEAI_OAUTH_CLIENT_ID", "").strip()
     client_secret = os.environ.get("MATEAI_OAUTH_CLIENT_SECRET", "").strip()
-    if not (client_id and client_secret):
-        return None
-    return {
-        "installed": {
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "redirect_uris": ["http://localhost"],
+    if client_id and client_secret:
+        return {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": ["http://localhost"],
+            }
         }
-    }
+    try:
+        data = json.loads(BUILTIN_CLIENT_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    installed = data.get("installed") if isinstance(data, dict) else None
+    if isinstance(installed, dict) and installed.get("client_id") and installed.get("client_secret"):
+        return {"installed": installed}
+    return None
 
 
 def _scopes_of(info: dict) -> list[str]:
@@ -266,19 +279,28 @@ def get_oauth_credentials(
             except RefreshError as exc:
                 with contextlib.suppress(OSError):
                     _expired_marker().write_text("", encoding="utf-8")
+                # The 7-day limit applies to a user's own unverified client, not the verified built-in one.
+                builtin = _builtin_client_config()
+                own_client = not (builtin and creds.client_id == builtin["installed"]["client_id"])
+                testing_note = " (Google ends logins after 7 days for apps in 'Testing' mode.)" if own_client else ""
                 raise RuntimeError(
                     "Your YouTube login expired or was revoked, so Google refused to renew it. "
-                    f"{_sign_in_again()} (Google ends logins after 7 days for apps in "
-                    f"'Testing' mode.)\nDetails: {exc}"
+                    f"{_sign_in_again()}{testing_note}\nDetails: {exc}"
                 ) from exc
         else:
             builtin = None if client_secret_path.exists() else _builtin_client_config()
-            if builtin:
+            if builtin and force_reauth:
                 flow = InstalledAppFlow.from_client_config(builtin, scopes)
             elif client_secret_path.exists():
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
             elif _launched_by_desktop():
                 raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Studio and click Connect YouTube.")
+            elif builtin:
+                # Only setup (force_reauth) starts a browser sign-in with the built-in client: started
+                # from a tool call it would block the single-threaded MCP server until someone clicks Allow.
+                raise FileNotFoundError(
+                    "YouTube sign-in needed. Type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`."
+                )
             else:
                 raise FileNotFoundError(
                     f"Missing OAuth credentials at {client_secret_path}.\n"

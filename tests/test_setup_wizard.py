@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from urllib.parse import urlparse
 from pathlib import Path
 from unittest import mock
 
@@ -120,6 +121,58 @@ class WaitForClientSecretTests(unittest.TestCase):
                     sleep=fake_sleep, monotonic=lambda: clock["now"],
                 )
             self.assertEqual(fake_print.call_count, 1)
+
+
+class BuiltinClientWizardTests(unittest.TestCase):
+    def _run(self, builtin):
+        """Run the wizard with no client file of the user's own; returns (printed text, login mock)."""
+        import contextlib
+        import io
+        import webbrowser
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        self.missing = root / "client_secret.json"
+        venv_py = _write(root, "python", "")
+        out = io.StringIO()
+        fail = AssertionError("Google Cloud step ran")
+        with contextlib.redirect_stdout(out), \
+                mock.patch.object(yt_setup.yt_auth, "_desktop_login", return_value=None), \
+                mock.patch.object(yt_setup.yt_auth, "_resolve_default_client_secret", return_value=self.missing), \
+                mock.patch.object(yt_setup.yt_auth, "_builtin_client_config", return_value=builtin), \
+                mock.patch.object(yt_setup.yt_auth, "get_oauth_credentials") as login, \
+                mock.patch.object(yt_setup.yt_common, "venv_python", return_value=venv_py), \
+                mock.patch.object(yt_setup.yt_common, "STATE_DIR", root), \
+                mock.patch.object(yt_setup.yt_common, "TEMPLATE_FILE", root / "no-template.html"), \
+                mock.patch.object(yt_setup.yt_common, "write_snapshot_cache"), \
+                mock.patch.object(yt_setup.yt_snapshot, "fetch_studio_channel_snapshot") as snapshot, \
+                mock.patch.object(yt_setup.yt_snapshot, "print_cli_summary"), \
+                mock.patch("shutil.which", return_value=None), \
+                mock.patch.object(webbrowser, "open", side_effect=fail if builtin else None) as opened, \
+                mock.patch.object(yt_setup, "wait_for_client_secret", side_effect=fail if builtin else RuntimeError("waited")):
+            try:
+                yt_setup.run_interactive_setup_wizard()
+            except RuntimeError as exc:
+                self.assertEqual(str(exc), "waited")
+        self.opened, self.snapshot = opened, snapshot
+        return out.getvalue(), login
+
+    def test_builtin_client_skips_the_google_cloud_steps(self):
+        text, login = self._run(GOOD)
+        self.assertIn("[1/2]", text)
+        self.assertIn("[2/2]", text)
+        self.assertNotIn("/4]", text)
+        self.assertNotIn("console.cloud.google.com", text)
+        login.assert_called_once_with(client_secret_path=self.missing, upload_scope=True, force_reauth=True)
+        self.snapshot.assert_called_once_with(client_secret_path=self.missing)
+        self.assertFalse((self.missing.parent / "google_auth_secret").exists())
+
+    def test_without_a_builtin_client_the_wizard_still_asks_for_a_client_file(self):
+        text, login = self._run(None)
+        self.assertIn("[3/4] Waiting for your Desktop OAuth JSON file", text)
+        self.assertTrue(any(urlparse(c.args[0]).hostname == "console.cloud.google.com" for c in self.opened.call_args_list))
+        login.assert_not_called()
 
 
 if __name__ == "__main__":

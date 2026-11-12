@@ -24,7 +24,7 @@ Ask your AI things like:
 - **Built for Shorts.** Viewed vs. swiped away, engaged views, average % viewed and 100-point retention curves per video, so you can see where viewers leave.
 - **Upload and schedule in one sentence.** Video, cover, title, description, hashtags, tags, language, synthetic-media disclosure, pinned comment and a future publish time.
 - **Nothing goes live by surprise.** Every write has a `dry_run` preview, deleting a video always asks first, and `/yt-safety` lets you add confirmations for uploads, edits and comments. The confirmation box is shown by the plugin, so the AI can't click "yes" for you. See [Safety](#safety-dry-runs-confirmations-and-limits).
-- **One-command setup.** `/yt-setup` in Claude Code walks you through Google's sign-in and finds the file Google gives you.
+- **One-command setup.** `/yt-setup` in Claude Code opens Google's sign-in in your browser; you click Allow. No Google Cloud project needed.
 - **Runs only on your machine.** Your login stays in a local file only you can read, and the author receives no data. See [Privacy](#privacy-what-it-runs-sends-and-fetches).
 - **$0.** Google's YouTube APIs are free within the daily quota, and hosted creator tools charge a monthly fee to wrap these same APIs.
 - **TikTok side by side (optional, experimental).** Compare each Short with the same video on TikTok, and send a Short to your TikTok inbox. Needs your own TikTok developer app in sandbox mode; see [TikTok](#tiktok-optional-experimental).
@@ -50,7 +50,7 @@ claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
-Then type **`/yt-setup`** in Claude Code to connect your channel (needs Claude Code 2.1.287 or newer). It takes about 3 minutes the first time; see [Easy setup](#easy-setup-yt-setup).
+Then type **`/yt-setup`** in Claude Code to connect your channel (needs Claude Code 2.1.287 or newer). It is one sign-in in your browser; see [Easy setup](#easy-setup-yt-setup).
 
 The plugin keeps its state (`.venv`, OAuth client, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates.
 
@@ -101,7 +101,7 @@ claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
-`/yt-setup` opens the two Google pages in your default browser and finds the downloaded `client_secret_*.json` in your `Downloads` folder (or the project folder). The plugin's data folder is `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp`.
+`/yt-setup` opens Google's sign-in in your default browser. The plugin's data folder is `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp`.
 
 On a Claude Code older than 2.1.287 (no `/yt-setup`), run the wizard by hand:
 
@@ -137,7 +137,7 @@ For the private Studio analytics, run the wizard from that folder: `cd "$env:USE
 
 </details>
 
-> **Rather skip the Google Cloud setup?** MateAI Studio is a desktop app built on this plugin: you sign in to YouTube with one click, without creating your own Google Cloud project. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateaistudio.com/)
+> **Prefer a desktop app?** MateAI Studio is a desktop app built on this plugin, with the same one-click YouTube sign-in. It's free during early access, and the first testers are invited in small batches. [Join the early-access list →](https://mateaistudio.com/)
 
 ## Try it
 
@@ -190,7 +190,7 @@ When an action asks first, the plugin itself shows a confirmation box with exact
 
 ## YouTube API quota
 
-Your own Google Cloud project gets **10,000 free YouTube Data API units per day**, reset at midnight Pacific time. What each action costs, per [Google's quota table](https://developers.google.com/youtube/v3/determine_quota_cost) (checked 2026-11-08):
+A Google Cloud project gets **10,000 free YouTube Data API units per day**, reset at midnight Pacific time. With the built-in client that daily budget is shared by everyone using it; with [your own client](#use-your-own-google-cloud-client-optional-own-quota) it is yours alone. What each action costs, per [Google's quota table](https://developers.google.com/youtube/v3/determine_quota_cost) (checked 2026-11-08):
 
 | Action | Data API calls | Units |
 |---|---|---|
@@ -210,22 +210,11 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 
 **You need:** Claude Code 2.1.287 or newer, this plugin installed, and the Google account that owns your channel.
 
-**1. Type `/yt-setup` and read the answer.**
+**1. Type `/yt-setup`.** It answers "Opening your browser…" (or "Already connected." if you are done).
 
-| It says | Meaning | You |
-| --- | --- | --- |
-| "Already connected." | Done. | Nothing |
-| "Found your Google client file. Opening your browser…" | It has the file it needs. | Go to step 3 |
-| "One manual step first… I opened two Google pages." | No client file yet. Google makes everyone create one. | Go to step 2 |
+**2. Sign in (your browser opens).** Pick your YouTube account, tick **every box**, click **Allow**. Claude Code then shows **"yt-setup: connected!"** and the "YouTube: not connected" status hint disappears.
 
-**2. Make the Google client file (only if asked, about 3 minutes).** No program can do this for you.
-- Page "Audience": click **Add users** under **Test users**, enter your YouTube email, **Save**.
-- Page "Create OAuth client": **Application type = Desktop app** (not "Web application"), any name, **Create**, then **Download JSON**.
-- Leave the file in `~/Downloads` and run `/yt-setup` again.
-
-**3. Sign in (your browser opens).** Pick your YouTube account. On "Google hasn't verified this app" click **Advanced**, then **Go to … (unsafe)**; this is your own app. Tick **every box**, click **Allow**. Claude Code then shows **"yt-setup: connected!"** and the "YouTube: not connected" status hint disappears.
-
-`/yt-setup` copies your client file into the plugin's data folder with `600` permissions (on Windows: your private user profile folder), never prints it, and never sees your Google password.
+That's all. The plugin ships with the Google-verified MateAI Studio sign-in client (`oauth_client.json`), so you don't create a Google Cloud project. `/yt-setup` never sees your Google password.
 
 ### Manual setup wizard (any client)
 
@@ -235,10 +224,9 @@ Not using Claude Code 2.1.287+? Run the wizard:
 python3 yt_studio.py setup
 ```
 
-Because you run this for your own channel with the Google app in "Testing" mode, **no Google app verification is needed** (the cost: Google expires the sign-in every 7 days). The wizard:
+The wizard:
 1. **Creates `.venv` and installs Google's OAuth libraries** if they aren't installed yet.
-2. **Enables the YouTube APIs via `gcloud`** if you have the `gcloud` CLI, or opens the enablement pages.
-3. **Opens the Test User and Create Desktop Client pages and watches `~/Downloads`.** When you click **Download JSON**, it moves `client_secret_*.json` into `google_auth_secret/client_secret.json` (`0600`, `.gitignore`d), starts the YouTube sign-in and opens your `report.html` dashboard.
+2. **Starts the YouTube sign-in in your browser** with the built-in client, then opens your `report.html` dashboard.
 
 For the Claude Code plugin on an older Claude Code, point the wizard at the plugin's data folder:
 
@@ -248,6 +236,19 @@ MATEAI_YT_HOME=~/.claude/plugins/data/yt-studio-mateai-youtube-mcp \
 ```
 
 Replace `<version>` with your installed version (`ls ~/.claude/plugins/cache/mateai-youtube-mcp/yt-studio/`), or run the same command from any clone of this repo. Restart Claude Code afterwards.
+
+### Use your own Google Cloud client (optional, own quota)
+
+You can sign in through your own Google Cloud project instead, for example to have your own API quota. A `client_secret.json` in the plugin's data folder takes priority over the built-in client.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project and enable **YouTube Data API v3** and **YouTube Analytics API**.
+2. Page "Audience": click **Add users** under **Test users**, enter your YouTube email, **Save**.
+3. Page "Create OAuth client": **Application type = Desktop app** (not "Web application"), any name, **Create**, then **Download JSON**.
+4. Save the file as `google_auth_secret/client_secret.json` in the plugin's data folder (`~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`), then run `/yt-setup` (delete the `.tokens` folder first if you were already connected).
+
+On Google's sign-in, "Google hasn't verified this app" then appears: click **Advanced**, then **Go to … (unsafe)**; this is your own app. With your own app in "Testing" mode Google expires the sign-in every 7 days.
+
+If the plugin has no built-in client (a clone without `oauth_client.json`), `/yt-setup` and the wizard guide you through these steps: they open the Google pages and pick the downloaded file up from `~/Downloads`.
 
 ### Public mode (no login, opt-in)
 
@@ -269,6 +270,8 @@ For your own channel, the official APIs above are the recommended default.
 
 Everything runs on your own computer. The author receives no data. Nothing is sent anywhere except to Google/YouTube (and to TikTok, only if you set up the optional TikTok connection), and to your Claude conversation, which is under Anthropic's own privacy terms (see [PRIVACY.md](PRIVACY.md)).
 
+With the built-in client, your API calls run under the author's Google Cloud project, so Google shows the author aggregate usage numbers for that project (such as request and error counts). It does not show your channel data, videos or login. With [your own client](#use-your-own-google-cloud-client-optional-own-quota) even those numbers stay in your project.
+
 **The MCP server** (`mcp_server.py`, started by Claude Code as `python3 ${CLAUDE_PLUGIN_ROOT}/mcp_server.py`):
 - Calls Google's **YouTube Data API v3** and **YouTube Analytics API v2** with the scopes you approve at sign-in: read-only analytics, and optionally upload, edit metadata and post comments.
 - **Public mode (off by default):** fetches public `youtube.com` channel and video pages only when you opt in with `--public`, `force_public=true` or `MATEAI_YT_PUBLIC_SCRAPE=1`.
@@ -276,12 +279,12 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 - Writes `channel_snapshot.json` and `report.html` (cached statistics for your own channel) to the plugin data folder.
 
 **The `/yt-setup` command** (a Claude Code mod in `hooks/`):
-- Looks for a `client_secret*.json` in the plugin data folder, your current project and `~/Downloads` (up to 5 folders deep), and copies a Desktop-app client into the data folder with `600` permissions. It never prints the file.
+- Only when the plugin has no built-in client: looks for a `client_secret*.json` in the plugin data folder, your current project and `~/Downloads` (up to 5 folders deep), copies a Desktop-app client into the data folder with `600` permissions, and opens two Google Cloud pages (macOS `open`, Windows `rundll32 url.dll,FileProtocolHandler`). It never prints the file.
 - Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
-- Opens two Google Cloud pages (macOS `open`, Windows `rundll32 url.dll,FileProtocolHandler`) and starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
+- Starts Google's sign-in in your browser. Your Google password is typed on Google's own page and never reaches this plugin.
 - Reads your saved token only to check which permissions it holds.
 
-**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`client_secret.json` and `.tokens/token.json`, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
+**Where your login lives:** `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`.tokens/token.json`, plus `client_secret.json` if you use your own client, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder). Delete that folder to remove it, and revoke access at <https://myaccount.google.com/permissions>.
 
 **With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
 
@@ -289,7 +292,7 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 
 Cross-post your Shorts and see how they do on both platforms. This uses TikTok's official, free developer API only: no cookies, no scraping. It never publishes for you; a video lands in your TikTok app inbox and you tap Post yourself. The YouTube tools work the same whether or not you set this up.
 
-**Experimental: you need your own TikTok developer app, in sandbox mode.** Like the YouTube side, the plugin has no shared app: you create one at developers.tiktok.com. Without TikTok's app review, an app only works in its **sandbox**, and only for the TikTok accounts you add there as **target users** (your own account). Status today: stats (`tiktok_channel_snapshot`) are tested through a sandbox app; sending a draft to the inbox through a sandbox app is **not tested yet**.
+**Experimental: you need your own TikTok developer app, in sandbox mode.** Unlike the YouTube side, the plugin has no shared app: you create one at developers.tiktok.com. Without TikTok's app review, an app only works in its **sandbox**, and only for the TikTok accounts you add there as **target users** (your own account). Status today: stats (`tiktok_channel_snapshot`) are tested through a sandbox app; sending a draft to the inbox through a sandbox app is **not tested yet**.
 
 > "Send `exports/short.mp4` to my TikTok inbox with the caption from `planning/my-short-upload.md`."
 >
@@ -352,12 +355,12 @@ python3 tiktok_studio.py cross-table                                # YouTube Sh
 | Problem | Fix |
 | --- | --- |
 | It says the file is a **"web" client** | Create a new client and choose **Desktop app**. |
-| Browser shows **"Access blocked" / 403 access_denied** | Your email is not under **Test users**. Add it, then rerun `/yt-setup`. |
+| Browser shows **"Access blocked" / 403 access_denied** | Only with your own Google client: your email is not under **Test users**. Add it, then rerun `/yt-setup`. |
 | **"Login did not finish"** | The tab was closed early or a box was not ticked. Rerun `/yt-setup`. |
 | **"yt-studio plugin is not installed"** | Run `claude plugin install yt-studio@mateai-youtube-mcp`. |
 | **"Could not install the Google libraries"** | Install Python 3 (python.org) and check your internet connection. |
 | **Nothing happens** | Hooks may be off (`disableAllHooks`). `/yt-setup` is a hook-based mod. |
-| Asked to log in again after about a week, or "Your YouTube login expired" | Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
+| Asked to log in again after about a week, or "Your YouTube login expired" | Only with your own Google client: Google expires sign-ins after 7 days for an app in "Testing" status with an external user type ([Google's OAuth docs](https://developers.google.com/identity/protocols/oauth2#expiration)). Rerun `/yt-setup`. Whether publishing the app on the Audience page avoids this is **[unconfirmed]**: Google's page doesn't say. Trade-off: moving from "Testing" to "In production" may stop the 7-day expiry **[unconfirmed]**, but sign-in then shows Google's "Google hasn't verified this app" warning. |
 | Start over | Delete `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/.tokens`, then rerun `/yt-setup`. |
 
 </details>

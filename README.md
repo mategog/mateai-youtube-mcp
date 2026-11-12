@@ -4,6 +4,8 @@
 [![mategog/mateai-youtube-mcp MCP server](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp)
 [![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 [![YouTube Channel](https://img.shields.io/badge/YouTube-@mateai--c6m-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@mateai-c6m)
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor%20on%20GitHub-mategog-EA4AAA?logo=github-sponsors&logoColor=white)](https://github.com/sponsors/mategog)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20MateAI-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/mateai)
 
 **`mateai-youtube-mcp` (installed as the `yt-studio` plugin) is a free, self-hosted MCP server that lets Claude Code, Claude Desktop and Google Antigravity upload, schedule and analyze videos on your own YouTube channel through Google's official YouTube Data and Analytics APIs.** It runs on your computer, uses the AI subscription you already pay for, and costs $0.
 
@@ -24,7 +26,7 @@ Ask your AI things like:
 - **Built for Shorts.** Viewed vs. swiped away, engaged views, average % viewed and 100-point retention curves per video, so you can see where viewers leave.
 - **Upload and schedule in one sentence.** Video, cover, title, description, hashtags, tags, language, synthetic-media disclosure, pinned comment and a future publish time.
 - **Nothing goes live by surprise.** Every write has a `dry_run` preview, deleting a video always asks first, and `/yt-safety` lets you add confirmations for uploads, edits and comments. The confirmation box is shown by the plugin, so the AI can't click "yes" for you. See [Safety](#safety-dry-runs-confirmations-and-limits).
-- **One-command setup.** `/yt-setup` in Claude Code opens Google's sign-in in your browser; you click Allow. No Google Cloud project needed.
+- **One-command, Google-verified sign-in.** `/yt-setup` in Claude Code opens Google's sign-in in your browser; you click Allow. The sign-in client passed Google's OAuth verification, so there is no "unverified app" warning and no Google Cloud project to create.
 - **Runs only on your machine.** Your login stays in a local file only you can read, and the author receives no data. See [Privacy](#privacy-what-it-runs-sends-and-fetches).
 - **$0.** Google's YouTube APIs are free within the daily quota, and hosted creator tools charge a monthly fee to wrap these same APIs.
 - **TikTok side by side (optional, experimental).** Compare each Short with the same video on TikTok, and send a Short to your TikTok inbox. Needs your own TikTok developer app in sandbox mode; see [TikTok](#tiktok-optional-experimental).
@@ -52,7 +54,7 @@ claude plugin install yt-studio@mateai-youtube-mcp
 
 Then type **`/yt-setup`** in Claude Code to connect your channel (needs Claude Code 2.1.287 or newer). It is one sign-in in your browser; see [Easy setup](#easy-setup-yt-setup).
 
-The plugin keeps its state (`.venv`, OAuth client, tokens, `channel_snapshot.json`, `report.html`) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates.
+The plugin keeps its state (`.venv`, tokens, `channel_snapshot.json`, `report.html`, and your own OAuth client if you use one) in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`, which survives plugin updates.
 
 ### Google Antigravity
 
@@ -133,7 +135,7 @@ For the private Studio analytics, run the wizard from that folder: `cd "$env:USE
 <details>
 <summary><b>Linux</b> (untested)</summary>
 
-`/yt-setup` auto-opening the Google pages is macOS and Windows only. On Linux, use the [manual wizard](#manual-setup-wizard-any-client) (`python3 yt_studio.py setup`).
+`/yt-setup` with the built-in client should work as on macOS, but it is untested. With [your own Google client](#use-your-own-google-cloud-client-optional-own-quota), `/yt-setup` can only open the Google Cloud pages on macOS and Windows; on Linux, use the [manual wizard](#manual-setup-wizard-any-client) (`python3 yt_studio.py setup`).
 
 </details>
 
@@ -210,11 +212,11 @@ Type **`/yt-setup`** in Claude Code and it connects the plugin to your YouTube a
 
 **You need:** Claude Code 2.1.287 or newer, this plugin installed, and the Google account that owns your channel.
 
-**1. Type `/yt-setup`.** It answers "Opening your browser…" (or "Already connected." if you are done).
+**1. Type `/yt-setup`.** It answers "Opening your browser…" (or "Already connected." if you are done). The first time, it installs Google's Python libraries into the data folder first, which takes about a minute.
 
 **2. Sign in (your browser opens).** Pick your YouTube account, tick **every box**, click **Allow**. Claude Code then shows **"yt-setup: connected!"** and the "YouTube: not connected" status hint disappears.
 
-That's all. The plugin ships with the Google-verified MateAI Studio sign-in client (`oauth_client.json`), so you don't create a Google Cloud project. `/yt-setup` never sees your Google password.
+That's all. The plugin ships with the MateAI Studio sign-in client (`oauth_client.json`), which **Google reviewed and verified** in November 2026 for the YouTube permissions it asks for. So you don't create a Google Cloud project, Google's consent screen shows MateAI Studio without a "Google hasn't verified this app" warning, and your sign-in doesn't expire after 7 days. `/yt-setup` never sees your Google password.
 
 ### Manual setup wizard (any client)
 

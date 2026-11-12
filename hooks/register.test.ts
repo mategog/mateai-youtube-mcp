@@ -96,6 +96,39 @@ test('one session.start registers both /yt-setup and /yt-dashboard', async ($, o
   expect([...registered].sort()).toEqual(['yt-dashboard', 'yt-setup'])
 })
 
+// MateAI Studio's login: /usr/bin/security exists and finds the app's Keychain item.
+const appLogin = (on: any, hints?: Array<string | undefined>) => {
+  stub(on, { [PLUGIN]: '', [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}', '/usr/bin/security': '' }, hints)
+  const argvs: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    argvs.push(e.argv)
+
+    return { value: { exitCode: e.argv[0] === '/usr/bin/security' ? 0 : 1, stdout: '', stderr: '' } }
+  })
+
+  return argvs
+}
+
+test('with a MateAI Studio login, /yt-setup says connected and starts no second sign-in', async ($, on) => {
+  const argvs = appLogin(on)
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: '' })
+  await new Promise(r => setTimeout(r, 50))
+
+  expect(out.text).toMatch(/MateAI Studio/)
+  expect(argvs.every(a => a[0] === '/usr/bin/security')).toBe(true)
+  expect(argvs.some(a => a.includes('-w'))).toBe(false)
+})
+
+test('with a MateAI Studio login, no "not connected" hint at start', async ($, on) => {
+  const hints: Array<string | undefined> = []
+  appLogin(on, hints)
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(false)
+})
+
 const MARKER = `${DATA}/.tokens/expired`
 
 test('starts the sign-in, not "Already connected", when the login is marked expired', async ($, on) => {

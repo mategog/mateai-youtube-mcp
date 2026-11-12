@@ -290,7 +290,7 @@ Everything runs on your own computer. The author receives no data. Nothing is se
 
 Cross-post your Shorts and see how they do on both platforms. This uses TikTok's official, free developer API only: no cookies, no scraping. It never publishes for you; a video lands in your TikTok app inbox and you tap Post yourself. The YouTube tools work the same whether or not you set this up.
 
-**Experimental: you need your own TikTok developer app, in sandbox mode.** Like the YouTube side, the plugin has no shared app: you create one at developers.tiktok.com. Without TikTok's app review, an app only works in its **sandbox**, and only for the TikTok accounts you add there as **target users** (your own account). Status today: stats (`tiktok_channel_snapshot`) are tested through a sandbox app; sending a draft to the inbox through a sandbox app is **not tested yet**.
+**Experimental: you need your own TikTok developer app, in sandbox mode.** Unlike the YouTube side, the plugin has no shared app: you create one at developers.tiktok.com. Without TikTok's app review, an app only works in its **sandbox**, and only for the TikTok accounts you add there as **target users** (your own account). Status today: stats (`tiktok_channel_snapshot`) are tested through a sandbox app; sending a draft to the inbox through a sandbox app is **not tested yet**.
 
 > "Send `exports/short.mp4` to my TikTok inbox with the caption from `planning/my-short-upload.md`."
 >

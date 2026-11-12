@@ -126,7 +126,7 @@ const LOGIN_CODE = [
   'print("LOGIN_OK")',
 ].join('\n')
 
-const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' | 'expired') => {
+const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' | 'expired', force = false) => {
   const env = { MATEAI_YT_HOME: p.data }
   if (!(await $.fs.exists(p.venvPython))) {
     $.ui.toast('yt-setup: installing Google libraries (about a minute)…')
@@ -145,7 +145,7 @@ const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' 
   }
   $.ui.toast('yt-setup: your browser is opening. Sign in and click Allow.')
   const login = await $.process.run(
-    [p.venvPython, '-c', LOGIN_CODE, state === 'scopes' || state === 'expired' ? '1' : '0'],
+    [p.venvPython, '-c', LOGIN_CODE, force || state === 'scopes' || state === 'expired' ? '1' : '0'],
     { cwd: root, env, timeoutMs: 600000 },
   ).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
   const isOk = login.exitCode === 0 && (await loginState($, p)) === 'ok'
@@ -190,7 +190,8 @@ const registerSetup: Register = on => {
     // The plugin ships a verified Google client (oauth_client.json), so sign-in needs no Google Cloud
     // steps. A client file of the user's own in the data folder still wins (yt_auth.py picks it).
     if (!(await $.fs.exists(p.secret)) && (await $.fs.exists(`${root}/oauth_client.json`))) {
-      void connect($, p, root, state)
+      // force: yt_auth.py starts a built-in-client sign-in only for setup, never from a tool call.
+      void connect($, p, root, state, true)
 
       return { text: 'Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.' }
     }

@@ -73,9 +73,10 @@ test('with the bundled Google client it goes straight to the sign-in, no Google 
   expect(out.text).not.toMatch(/Download JSON/)
   expect(argvs.length).toBe(1)
   expect(argvs[0][0]).toBe(`${DATA}/.venv/bin/python`)
+  expect(argvs[0][argvs[0].length - 1]).toBe('1')
 })
 
-test('refuses a client file of the wrong type without copying it',async ($, on) => {
+test('refuses a client file of the wrong type without copying it', async ($, on) => {
   stub(on, { [PLUGIN]: '', '/proj/client_secret_x.json': '{"web":{}}' })
   on('process.run', () => ({
     value: { exitCode: 0, stdout: '/proj/client_secret_x.json\n', stderr: '' },

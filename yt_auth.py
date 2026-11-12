@@ -289,12 +289,18 @@ def get_oauth_credentials(
                 ) from exc
         else:
             builtin = None if client_secret_path.exists() else _builtin_client_config()
-            if builtin:
+            if builtin and force_reauth:
                 flow = InstalledAppFlow.from_client_config(builtin, scopes)
             elif client_secret_path.exists():
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
             elif _launched_by_desktop():
                 raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Studio and click Connect YouTube.")
+            elif builtin:
+                # Only setup (force_reauth) starts a browser sign-in with the built-in client: started
+                # from a tool call it would block the single-threaded MCP server until someone clicks Allow.
+                raise FileNotFoundError(
+                    "YouTube sign-in needed. Type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`."
+                )
             else:
                 raise FileNotFoundError(
                     f"Missing OAuth credentials at {client_secret_path}.\n"

@@ -14,7 +14,7 @@ This plugin runs entirely on your own computer. It has no server of its own, and
 
 Everything is saved locally, in the plugin's data folder (`~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/`) or in `MATEAI_YT_HOME`:
 
-- `client_secret.json`: your own Google OAuth client, only if you created one (otherwise the plugin's built-in `oauth_client.json` is used and nothing is stored for it)
+- `client_secret.json`: your own Google OAuth client, only if you created one (otherwise the plugin's built-in `oauth_client.json` is used)
 - `.tokens/token.json`: your YouTube OAuth token, with file mode 0600
 - `channel_snapshot.json` and `report.html`: cached YouTube channel statistics
 - `tiktok_auth_secret/tiktok_client.json`: the TikTok Desktop app client credentials you configured, with file mode 0600

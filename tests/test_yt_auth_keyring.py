@@ -83,7 +83,8 @@ class TestKeyringBackend(unittest.TestCase):
         with mock.patch.dict(os.environ, env), \
                 mock.patch.object(yt_auth, "_keyring_get", return_value=None), \
                 mock.patch.object(yt_auth, "_keyring_set") as saved:
-            self._call(_google_modules(creds, flow_cls), client_secret_path=Path(self.tmp.name) / "none.json")
+            self._call(_google_modules(creds, flow_cls), client_secret_path=Path(self.tmp.name) / "none.json",
+                       force_reauth=True)
         config, scopes = flow_cls.from_client_config.call_args.args
         self.assertEqual(config["installed"]["client_id"], "shared-id")
         self.assertEqual(scopes, yt_auth.SCOPES_READONLY)
@@ -128,10 +129,27 @@ class TestKeyringBackend(unittest.TestCase):
                 mock.patch.object(yt_auth, "BUILTIN_CLIENT_FILE", bundled), \
                 mock.patch.object(yt_auth, "_keyring_get", return_value=None), \
                 mock.patch.object(yt_auth, "_keyring_set"):
-            self._call(_google_modules(creds, flow_cls), client_secret_path=Path(self.tmp.name) / "none.json")
+            self._call(_google_modules(creds, flow_cls), client_secret_path=Path(self.tmp.name) / "none.json",
+                       force_reauth=True)
         config = flow_cls.from_client_config.call_args.args[0]
         self.assertEqual(config["installed"]["client_id"], "bundled-id")
         self.assertEqual(config["installed"]["token_uri"], "https://oauth2.googleapis.com/token")
+
+    def test_a_tool_call_never_starts_a_builtin_sign_in(self):
+        # Without force_reauth (i.e. not setup) a browser flow would block the MCP server.
+        flow_cls = types.SimpleNamespace(
+            from_client_config=mock.Mock(side_effect=AssertionError("flow started")),
+            from_client_secrets_file=mock.Mock(side_effect=AssertionError("file flow used")),
+        )
+        bundled = self._bundled({"installed": {"client_id": "bundled-id", "client_secret": "bundled-sec"}})
+        for launcher, expected in (("", "/yt-setup"), ("desktop", "Open MateAI Studio")):
+            env = {**NO_ENV_CLIENT, "MATEAI_LAUNCHER": launcher}
+            with self.subTest(launcher=launcher), mock.patch.dict(os.environ, env), \
+                    mock.patch.object(yt_auth, "BUILTIN_CLIENT_FILE", bundled), \
+                    mock.patch.object(yt_auth, "_keyring_get", return_value=None):
+                with self.assertRaises(FileNotFoundError) as ctx:
+                    self._call(_google_modules(None, flow_cls), client_secret_path=Path(self.tmp.name) / "none.json")
+                self.assertIn(expected, str(ctx.exception))
 
     def test_a_users_own_client_file_wins_over_the_bundled_client_file(self):
         secret = Path(self.tmp.name) / "client_secret.json"

@@ -12,6 +12,7 @@ import yt_auth
 import yt_studio
 
 os.environ["MATEAI_DESKTOP_LOGIN"] = "off"  # never read the real MateAI Studio login in tests
+yt_auth.BUILTIN_CLIENT_FILE = Path(os.devnull) / "oauth_client.json"  # nor the real bundled Google client
 # A token file as earlier versions saved it; its scopes cover every call, so expiry means refresh.
 FULL_TOKEN = json.dumps({"refresh_token": "r", "scopes": yt_auth.SCOPES_WITH_UPLOAD})
 
@@ -414,6 +415,21 @@ class TestDesktopSignInMessages(unittest.TestCase):
         msg = self._refresh_error("")
         self.assertIn("type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`.", msg)
         self.assertNotIn("MateAI Studio", msg)
+
+    def test_expired_login_from_the_builtin_client_does_not_blame_testing_mode(self):
+        creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None, client_id="shared-id")
+        creds.refresh.side_effect = FakeRefreshError("invalid_grant")
+        env = {"MATEAI_OAUTH_CLIENT_ID": "shared-id", "MATEAI_OAUTH_CLIENT_SECRET": "shared-sec"}
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / "token.json"
+            token.write_text(FULL_TOKEN, encoding="utf-8")
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, _fake_google_modules(creds)), \
+                    mock.patch.dict(os.environ, env):
+                with self.assertRaises(RuntimeError) as ctx:
+                    yt_studio.get_oauth_credentials()
+        self.assertIn("/yt-setup", str(ctx.exception))
+        self.assertNotIn("7 days", str(ctx.exception))
 
     def test_no_login_points_desktop_users_to_the_app(self):
         msg = self._no_login_error("desktop")

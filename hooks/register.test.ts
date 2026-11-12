@@ -56,7 +56,26 @@ test('explains the one manual Google step when no client file exists', async ($,
   expect(out.text).toMatch(/Download JSON/)
 })
 
-test('refuses a client file of the wrong type without copying it', async ($, on) => {
+test('with the bundled Google client it goes straight to the sign-in, no Google Cloud pages', async ($, on) => {
+  stub(on, { [PLUGIN]: '', [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}', [`${DATA}/.venv/bin/python`]: '' })
+  const argvs: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    argvs.push(e.argv)
+
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: '' })
+  for (let i = 0; i < 50 && argvs.length === 0; i++) await new Promise(r => setTimeout(r, 10))
+
+  expect(out.text).toMatch(/Opening your browser/)
+  expect(out.text).not.toMatch(/Download JSON/)
+  expect(argvs.length).toBe(1)
+  expect(argvs[0][0]).toBe(`${DATA}/.venv/bin/python`)
+})
+
+test('refuses a client file of the wrong type without copying it',async ($, on) => {
   stub(on, { [PLUGIN]: '', '/proj/client_secret_x.json': '{"web":{}}' })
   on('process.run', () => ({
     value: { exitCode: 0, stdout: '/proj/client_secret_x.json\n', stderr: '' },

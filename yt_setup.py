@@ -113,15 +113,24 @@ def run_interactive_setup_wizard() -> None:
         print("To sign in again or switch accounts, open MateAI Studio and click Connect YouTube.")
         return
 
+    # With the built-in verified client and no client file of their own, the user has no Google Cloud steps.
+    secret_path = yt_auth._resolve_default_client_secret()
+    builtin = not secret_path.exists() and yt_auth._builtin_client_config() is not None
+    steps = 2 if builtin else 4
+
     # Step 1: Ensure .venv and Google API client packages exist
     venv_py = yt_common.venv_python()
     if not venv_py.exists():
-        print("\n[1/4] Creating local Python virtualenv (.venv) and installing Google API SDK...")
+        print(f"\n[1/{steps}] Creating local Python virtualenv (.venv) and installing Google API SDK...")
         subprocess.run([sys.executable, "-m", "venv", str(yt_common.STATE_DIR / ".venv")], check=True)
         subprocess.run([str(venv_py), "-m", "pip", "install", "-q", "-r", str(yt_common.HERE / "requirements.txt")], check=True)
         yt_common.add_venv_to_path()
     else:
-        print("\n[1/4] Python virtualenv (.venv) is ready.")
+        print(f"\n[1/{steps}] Python virtualenv (.venv) is ready.")
+
+    if builtin:
+        _login_and_snapshot(secret_path, "[2/2]")
+        return
 
     # Step 2: Enable YouTube Data API v3 & YouTube Analytics API
     print("\n[2/4] Enabling YouTube Data API v3 & YouTube Analytics API...")
@@ -150,7 +159,6 @@ def run_interactive_setup_wizard() -> None:
     # Step 3: Check or watch for client_secret.json
     secret_dir = yt_common.STATE_DIR / "google_auth_secret"
     secret_dir.mkdir(parents=True, exist_ok=True)
-    secret_path = yt_auth._resolve_default_client_secret()
 
     if not secret_path.exists():
         print("\n[3/4] Waiting for your Desktop OAuth JSON file...")
@@ -180,8 +188,14 @@ def run_interactive_setup_wizard() -> None:
     else:
         print(f"\n[3/4] Found existing OAuth client secret: {secret_path.name}")
 
-    # Step 4: Launch OAuth browser login & pull live Studio snapshot
-    print("\n[4/4] Launching Google account & YouTube channel selector in your browser...")
+    _login_and_snapshot(secret_path, "[4/4]")
+
+
+def _login_and_snapshot(secret_path: Path, step: str) -> None:
+    """Last step: OAuth browser login, then pull and show the live Studio snapshot."""
+    import webbrowser
+
+    print(f"\n{step} Launching Google account & YouTube channel selector in your browser...")
     yt_auth.get_oauth_credentials(client_secret_path=secret_path, upload_scope=True, force_reauth=True)
     snap = yt_snapshot.fetch_studio_channel_snapshot(client_secret_path=secret_path)
     yt_common.write_snapshot_cache(snap, yt_common.CACHE_FILE)

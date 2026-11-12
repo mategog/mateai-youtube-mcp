@@ -196,7 +196,7 @@ def render_html_report(snapshot: dict[str, Any], out_path: Path = yt_common.REPO
 def get_best_snapshot(handle: str = DEFAULT_HANDLE, force_public: bool = False) -> dict[str, Any]:
     """Use Studio OAuth when configured; scrape public pages only when explicitly opted in."""
     allow_scrape = force_public or PUBLIC_SCRAPE_ENV
-    if not force_public and (yt_auth.has_login() or DEFAULT_CLIENT_SECRET.exists()):
+    if not force_public and (yt_auth.has_login() or DEFAULT_CLIENT_SECRET.exists() or yt_auth._builtin_client_config()):
         try:
             snap = fetch_studio_channel_snapshot()
             yt_common.write_snapshot_cache(snap, yt_common.CACHE_FILE)

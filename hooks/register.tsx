@@ -187,6 +187,14 @@ const registerSetup: Register = on => {
       return { text: 'The yt-studio plugin is not installed. Install it first with: /plugin install yt-studio@mateai-youtube-mcp' }
     }
 
+    // The plugin ships a verified Google client (oauth_client.json), so sign-in needs no Google Cloud
+    // steps. A client file of the user's own in the data folder still wins (yt_auth.py picks it).
+    if (!(await $.fs.exists(p.secret)) && (await $.fs.exists(`${root}/oauth_client.json`))) {
+      void connect($, p, root, state)
+
+      return { text: 'Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.' }
+    }
+
     const secret = await findSecret($, p, projectDir)
     if (secret === undefined) {
       // `open` is macOS; on Windows, url.dll opens the default browser without a shell to quote for.

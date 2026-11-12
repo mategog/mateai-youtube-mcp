@@ -12,7 +12,7 @@ const TOKEN = JSON.stringify({
 
 const registered: string[] = []
 
-const stub = (on: any, files: Record<string, string>, hints?: Array<string | undefined>) => {
+const stub = (on: any, files: Record<string, string>, hints?: Array<string | undefined>, env: Record<string, string> = {}) => {
   on('command.register', (_: unknown, e: { name: string }) => {
     registered.push(e.name)
 
@@ -20,7 +20,7 @@ const stub = (on: any, files: Record<string, string>, hints?: Array<string | und
   })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('env.get', (_: unknown, e: { name: string }) => ({
-    value: e.name === 'HOME' ? '/home/u' : undefined,
+    value: e.name === 'HOME' ? '/home/u' : env[e.name],
   }))
   on('fs.exists', (_: unknown, e: { path: string }) => ({ value: e.path in files }))
   on('fs.read', (_: unknown, e: { path: string }) => ({ value: files[e.path] }))
@@ -107,9 +107,10 @@ test('/yt-setup when connected points to /yt-disconnect, not the manual delete',
 })
 
 // Runs /yt-disconnect; the Python helper (yt_auth.disconnect) answers with `reply` on stdout.
-const runDisconnect = async ($: any, on: any, files: Record<string, string>, reply: string) => {
+// A '/usr/bin/security' entry in `files` means MateAI Studio's Keychain login exists.
+const runDisconnect = async ($: any, on: any, files: Record<string, string>, reply: string, env: Record<string, string> = {}) => {
   const hints: Array<string | undefined> = []
-  stub(on, { ...files, [PLUGIN]: '', [`${DATA}/.venv/bin/python`]: '' }, hints)
+  stub(on, { ...files, [PLUGIN]: '', [`${DATA}/.venv/bin/python`]: '' }, hints, env)
   const runs: Array<{ argv: string[]; env?: Record<string, string> }> = []
   on('process.run', (_: unknown, e: { argv: string[]; init?: { env?: Record<string, string> } }) => {
     runs.push({ argv: e.argv, env: e.init?.env })
@@ -137,8 +138,9 @@ test('/yt-disconnect revokes and deletes through yt_auth.disconnect, then shows 
 
   expect(runs.length).toBe(1)
   expect(runs[0].argv[0]).toBe(`${DATA}/.venv/bin/python`)
-  expect(runs[0].argv.join(' ')).toMatch(/yt_auth\.disconnect\(\)/)
+  expect(runs[0].argv.join(' ')).toMatch(/yt_auth\.disconnect\(revoke=/)
   expect(runs[0].env?.MATEAI_YT_HOME).toBe(DATA)
+  expect(runs[0].argv[runs[0].argv.length - 1]).toBe('1') // revoke at Google
   expect(out.text).toMatch(/Google revoked access/)
   expect(out.text).toMatch(/\/yt-setup/)
   expect(out.text).toMatch(/pick the right account/)
@@ -157,6 +159,33 @@ test('/yt-disconnect when Google does not confirm: login still removed, honest m
   expect(hints).toContain('YouTube: not connected, run /yt-setup')
 })
 
+test('/yt-disconnect with a MateAI Studio login deletes the plugin token but never revokes', async ($, on) => {
+  const { out, runs, hints } = await runDisconnect(
+    $, on, { [`${DATA}/.tokens/token.json`]: TOKEN, '/usr/bin/security': '' }, '{"had_login": true, "revoked": false}\n',
+  )
+  const helper = runs.filter(r => r.argv[0] !== '/usr/bin/security')
+
+  expect(helper.length).toBe(1)
+  expect(helper[0].argv[helper[0].argv.length - 1]).toBe('0') // no revoke: it would sign Studio out too
+  expect(out.text).toMatch(/Removed the plugin's own YouTube login/)
+  expect(out.text).toMatch(/not revoked/)
+  expect(out.text).toMatch(/disconnect YouTube in MateAI Studio/)
+  expect(out.text).toMatch(/myaccount\.google\.com\/permissions/)
+  expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(false) // still connected through Studio
+})
+
+test('keyring mode ignores the Studio Keychain item, as yt_auth.py does: revoke, "not connected"', async ($, on) => {
+  const { out, runs, hints } = await runDisconnect(
+    $, on, { '/usr/bin/security': '' }, '{"had_login": true, "revoked": true}\n', { MATEAI_TOKEN_BACKEND: 'keyring' },
+  )
+
+  expect(runs.some(r => r.argv[0] === '/usr/bin/security')).toBe(false)
+  expect(runs.length).toBe(1)
+  expect(runs[0].argv[runs[0].argv.length - 1]).toBe('1')
+  expect(out.text).not.toMatch(/MateAI Studio/)
+  expect(hints).toContain('YouTube: not connected, run /yt-setup')
+})
+
 test('/yt-disconnect when the helper fails does not claim success', async ($, on) => {
   const hints: Array<string | undefined> = []
   stub(on, { [`${DATA}/.tokens/token.json`]: TOKEN, [PLUGIN]: '' }, hints)
@@ -167,6 +196,7 @@ test('/yt-disconnect when the helper fails does not claim success', async ($, on
   const out = await $.command.run({ command: 'yt-disconnect', args: '' })
 
   expect(out.text).toMatch(/Could not disconnect/)
+  expect(out.text).toMatch(/\.tokens\/token\.json/)
   expect(out.text).toMatch(/myaccount\.google\.com\/permissions/)
   expect(hints.length).toBe(0)
 })

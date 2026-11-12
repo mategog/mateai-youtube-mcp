@@ -41,10 +41,10 @@ class TestDisconnect(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
 
-    def _run(self, **google):
+    def _run(self, revoke=True, **google):
         urlopen, calls = _google(**google)
         with mock.patch("urllib.request.urlopen", urlopen):
-            return yt_auth.disconnect(), calls
+            return yt_auth.disconnect(revoke), calls
 
     def test_nothing_connected_is_a_no_op(self):
         result, calls = self._run()
@@ -79,6 +79,20 @@ class TestDisconnect(unittest.TestCase):
     def test_unreadable_token_file_is_still_deleted(self):
         self.token.write_text("not json", encoding="utf-8")
         result, calls = self._run()
+        self.assertEqual(result, {"had_login": True, "revoked": False})
+        self.assertEqual(calls, [])
+        self.assertFalse(self.token.exists())
+
+    def test_empty_token_file_is_deleted(self):
+        self.token.write_text("", encoding="utf-8")
+        result, calls = self._run()
+        self.assertEqual(result, {"had_login": True, "revoked": False})
+        self.assertEqual(calls, [])
+        self.assertFalse(self.token.exists())
+
+    def test_revoke_false_deletes_without_calling_google(self):
+        self.token.write_text(json.dumps({"refresh_token": "r"}), encoding="utf-8")
+        result, calls = self._run(revoke=False, status=200)
         self.assertEqual(result, {"had_login": True, "revoked": False})
         self.assertEqual(calls, [])
         self.assertFalse(self.token.exists())

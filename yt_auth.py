@@ -349,16 +349,16 @@ def _revoke_at_google(token: str) -> bool:
         return False
 
 
-def disconnect() -> dict:
+def disconnect(revoke: bool = True) -> dict:
     """Revoke this plugin's saved login at Google (best effort), then delete it locally either way.
 
-    MateAI Studio's own login and the user's client_secret.json are left alone."""
+    revoke=False only deletes it: the built-in client is MateAI Studio's, and Google revokes the whole
+    user+client grant, so revoking here would also sign Studio out. client_secret.json is left alone."""
     use_keyring = _use_keyring()
-    stored = _keyring_get() if use_keyring else (
-        TOKEN_FILE.read_text(encoding="utf-8") if TOKEN_FILE.exists() else None
-    )
+    has_file = not use_keyring and TOKEN_FILE.exists()
+    stored = _keyring_get() if use_keyring else (TOKEN_FILE.read_text(encoding="utf-8") if has_file else None)
     revoked = False
-    if stored:
+    if stored and revoke:
         try:
             info = json.loads(stored)
             token = info.get("refresh_token") or info.get("token")
@@ -366,12 +366,12 @@ def disconnect() -> dict:
             token = None  # unreadable token file: nothing to revoke, still delete it
         if token:
             revoked = _revoke_at_google(token)
-        if use_keyring:
-            _keyring().delete_password(KEYRING_SERVICE, KEYRING_USER)
-        else:
-            TOKEN_FILE.unlink(missing_ok=True)
+    if use_keyring and stored:
+        _keyring().delete_password(KEYRING_SERVICE, KEYRING_USER)
+    elif has_file:
+        TOKEN_FILE.unlink(missing_ok=True)  # even an empty file, or it would count as a login
     _expired_marker().unlink(missing_ok=True)
-    return {"had_login": bool(stored), "revoked": revoked}
+    return {"had_login": has_file or bool(stored), "revoked": revoked}
 
 
 def _quota_kwargs() -> dict:

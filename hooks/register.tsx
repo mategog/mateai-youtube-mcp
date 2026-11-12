@@ -64,10 +64,12 @@ const loginState = async ($: Api, p: Paths): Promise<'ok' | 'scopes' | 'expired'
 
 // MateAI Studio's YouTube login (macOS Keychain). The Python side uses it before the plugin's own login,
 // so one Connect covers both. No -w: this only asks whether the item exists, never reads the token,
-// so macOS shows no prompt. MATEAI_DESKTOP_LOGIN=off turns it off, as in yt_auth.py.
+// so macOS shows no prompt. MATEAI_DESKTOP_LOGIN=off and MATEAI_TOKEN_BACKEND=keyring turn it off, as in yt_auth.py.
+const usesKeyring = async ($: Api) => ((await $.env.get('MATEAI_TOKEN_BACKEND')) ?? '').trim().toLowerCase() === 'keyring'
+
 const hasAppLogin = async ($: Api): Promise<boolean> => {
   const off = ['off', '0', 'false'].includes(((await $.env.get('MATEAI_DESKTOP_LOGIN')) ?? '').trim().toLowerCase())
-  if (off || !(await $.fs.exists('/usr/bin/security'))) return false
+  if (off || (await usesKeyring($)) || !(await $.fs.exists('/usr/bin/security'))) return false
   const found = await $.process.run(
     ['/usr/bin/security', 'find-generic-password', '-s', 'dev.mateai.desktop', '-a', 'google-oauth-token'],
     { timeoutMs: 10000 },
@@ -141,8 +143,8 @@ const LOGIN_CODE = [
 ].join('\n')
 
 const DISCONNECT_CODE = [
-  'import yt_auth, json',
-  'print(json.dumps(yt_auth.disconnect()))',
+  'import yt_auth, json, sys',
+  'print(json.dumps(yt_auth.disconnect(revoke=sys.argv[1] == "1")))',
 ].join('\n')
 
 const NOT_CONNECTED = 'YouTube is not connected. Nothing to do.'
@@ -150,11 +152,12 @@ const STUDIO_LOGIN = 'This plugin uses your MateAI Studio login. To disconnect i
 const PERMISSIONS = 'https://myaccount.google.com/permissions'
 
 // Revokes the plugin's own login at Google (best effort) and deletes it; yt_auth.disconnect() does both.
+// With a MateAI Studio login it only deletes: the built-in client is Studio's, and Google revokes the
+// whole user+client grant, so a revoke here would sign Studio out too.
 const disconnect = async ($: Api) => {
   const p = await paths($)
   const appLogin = await hasAppLogin($)
-  const keyring = ((await $.env.get('MATEAI_TOKEN_BACKEND')) ?? '').trim().toLowerCase() === 'keyring'
-  if (!keyring && !(await $.fs.exists(p.token))) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
+  if (!(await usesKeyring($)) && !(await $.fs.exists(p.token))) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
 
   const root = await pluginRoot($, p)
   if (root === undefined) {
@@ -162,7 +165,7 @@ const disconnect = async ($: Api) => {
   }
   const python = (await $.fs.exists(p.venvPython)) ? p.venvPython : 'python3'
   const run = await $.process.run(
-    [python, '-c', DISCONNECT_CODE],
+    [python, '-c', DISCONNECT_CODE, appLogin ? '0' : '1'],
     { cwd: root, env: { MATEAI_YT_HOME: p.data }, timeoutMs: 60000 },
   ).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
   let result: { had_login?: boolean; revoked?: boolean } | undefined
@@ -171,21 +174,24 @@ const disconnect = async ($: Api) => {
   } catch {}
   if (run.exitCode !== 0 || result === undefined) {
     return {
-      text: `Could not disconnect: ${run.stderr.trim().slice(-200)}\nTo do it by hand, delete the .tokens folder in ${p.data} and remove access at ${PERMISSIONS}.`,
+      text: `Could not disconnect: ${run.stderr.trim().slice(-200)}\nTo do it by hand, delete ${p.token} and remove access at ${PERMISSIONS}.`,
     }
   }
   if (!result.had_login) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
 
-  if (!appLogin) $.ui.status('YouTube: not connected, run /yt-setup')
+  if (appLogin) {
+    return {
+      text: `Removed the plugin's own YouTube login from this computer. Google access was not revoked, because MateAI Studio uses the same Google sign-in and a revoke would sign Studio out too. ${STUDIO_LOGIN} To cut Google access fully, disconnect YouTube in MateAI Studio (that revokes it) or remove access at ${PERMISSIONS}.`,
+    }
+  }
+  $.ui.status('YouTube: not connected, run /yt-setup')
 
   return {
     text: [
       result.revoked
         ? 'Disconnected. Google revoked access and the saved login was removed from this computer.'
         : `The saved login was removed from this computer, but Google did not confirm the revoke (offline, or the login was already invalid). To be sure, remove access at ${PERMISSIONS}.`,
-      appLogin
-        ? `Note: ${STUDIO_LOGIN}`
-        : 'To connect another channel, run /yt-setup. Google may pre-select the account you used last, so pick the right account and channel in the browser.',
+      'To connect another channel, run /yt-setup. Google may pre-select the account you used last, so pick the right account and channel in the browser.',
     ].join('\n'),
   }
 }

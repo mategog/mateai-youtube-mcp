@@ -328,6 +328,52 @@ def get_oauth_credentials(
     return creds
 
 
+REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+
+
+def _revoke_at_google(token: str) -> bool:
+    """True only when Google answers 200; the token goes in the POST body, never the URL."""
+    import urllib.parse
+    import urllib.request
+
+    req = urllib.request.Request(
+        REVOKE_URL,
+        data=urllib.parse.urlencode({"token": token}).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=yt_common.SSL_CONTEXT) as resp:
+            return resp.status == 200
+    except OSError:  # offline, or HTTPError (a URLError subclass) for an already-invalid token
+        return False
+
+
+def disconnect(revoke: bool = True) -> dict:
+    """Revoke this plugin's saved login at Google (best effort), then delete it locally either way.
+
+    revoke=False only deletes it: the built-in client is MateAI Studio's, and Google revokes the whole
+    user+client grant, so revoking here would also sign Studio out. client_secret.json is left alone."""
+    use_keyring = _use_keyring()
+    has_file = not use_keyring and TOKEN_FILE.exists()
+    stored = _keyring_get() if use_keyring else (TOKEN_FILE.read_text(encoding="utf-8") if has_file else None)
+    revoked = False
+    if stored and revoke:
+        try:
+            info = json.loads(stored)
+            token = info.get("refresh_token") or info.get("token")
+        except (ValueError, AttributeError):
+            token = None  # unreadable token file: nothing to revoke, still delete it
+        if token:
+            revoked = _revoke_at_google(token)
+    if use_keyring and stored:
+        _keyring().delete_password(KEYRING_SERVICE, KEYRING_USER)
+    elif has_file:
+        TOKEN_FILE.unlink(missing_ok=True)  # even an empty file, or it would count as a login
+    _expired_marker().unlink(missing_ok=True)
+    return {"had_login": has_file or bool(stored), "revoked": revoked}
+
+
 def _quota_kwargs() -> dict:
     """Count Data API calls for MateAI Studio's quota meter; plugin users (who also have MATEAI_YT_HOME) skip it."""
     if not _launched_by_desktop():

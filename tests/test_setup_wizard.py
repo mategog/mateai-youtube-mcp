@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from urllib.parse import urlparse
 from pathlib import Path
 from unittest import mock
 
@@ -170,7 +171,7 @@ class BuiltinClientWizardTests(unittest.TestCase):
     def test_without_a_builtin_client_the_wizard_still_asks_for_a_client_file(self):
         text, login = self._run(None)
         self.assertIn("[3/4] Waiting for your Desktop OAuth JSON file", text)
-        self.assertTrue(any("console.cloud.google.com" in c.args[0] for c in self.opened.call_args_list))
+        self.assertTrue(any(urlparse(c.args[0]).hostname == "console.cloud.google.com" for c in self.opened.call_args_list))
         login.assert_not_called()
 
 

@@ -114,14 +114,23 @@ def _saved_scopes(token_file: Path) -> list[str]:
     return _scopes_of(json.loads(token_file.read_text(encoding="utf-8")))
 
 
+def _has_own_token() -> bool:
+    """A readable token file; an empty or corrupt one must not hide a working MateAI Studio login."""
+    try:
+        _saved_scopes(TOKEN_FILE)
+        return True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def _launched_by_desktop() -> bool:
     """MateAI Studio sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
     return os.environ.get("MATEAI_LAUNCHER", "").strip().lower() == "desktop"
 
 
-# MateAI Studio's login (macOS Keychain). When it exists, the plugin uses it instead of its own, so one
-# Connect (or reconnect after revoking access at Google) fixes both. Read-only: macOS won't let this
-# program overwrite the app's item, so refreshed access tokens are kept in memory only.
+# MateAI Studio's login (macOS Keychain). The plugin falls back to it when it has no login of its own
+# (/yt-setup makes one, for any account the user picks), so one Connect in Studio covers both. Read-only:
+# macOS won't let this program overwrite the app's item, so refreshed access tokens are kept in memory only.
 DESKTOP_KEYCHAIN_SERVICE = "dev.mateai.desktop"
 _desktop_cache = None  # Credentials refreshed from the app's login, reused while valid
 
@@ -241,7 +250,8 @@ def get_oauth_credentials(
         ) from exc
 
     scopes = SCOPES_WITH_UPLOAD if upload_scope else SCOPES_READONLY
-    desktop = None if force_reauth else _desktop_login()
+    # The plugin's own login (made by /yt-setup) wins, so the user can pick another account than Studio's.
+    desktop = None if force_reauth or _has_own_token() else _desktop_login()
     if desktop is not None:
         return _desktop_credentials(desktop, scopes, Credentials, Request, RefreshError)
     creds = None
@@ -308,8 +318,9 @@ def get_oauth_credentials(
                     "and save it as client_secret.json (see README.md)."
                 )
             # google-auth-oauthlib adds a PKCE code_verifier/challenge (S256) by default.
+            # select_account: always show Google's account chooser instead of reusing the last account.
             try:
-                creds = flow.run_local_server(port=0, prompt="consent")
+                creds = flow.run_local_server(port=0, prompt="select_account consent")
             except Warning as exc:  # oauthlib: "Scope has changed", i.e. the user unticked a box
                 if not hasattr(exc, "new_scope"):
                     raise

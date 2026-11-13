@@ -124,8 +124,10 @@ class WaitForClientSecretTests(unittest.TestCase):
 
 
 class BuiltinClientWizardTests(unittest.TestCase):
-    def _run(self, builtin):
-        """Run the wizard with no client file of the user's own; returns (printed text, login mock)."""
+    def _run(self, builtin, desktop=None):
+        """Run the wizard with no client file of the user's own; returns (printed text, login mock).
+
+        `desktop` stands in for a MateAI Studio login (Keychain item)."""
         import contextlib
         import io
         import webbrowser
@@ -138,7 +140,7 @@ class BuiltinClientWizardTests(unittest.TestCase):
         out = io.StringIO()
         fail = AssertionError("Google Cloud step ran")
         with contextlib.redirect_stdout(out), \
-                mock.patch.object(yt_setup.yt_auth, "_desktop_login", return_value=None), \
+                mock.patch.object(yt_setup.yt_auth, "_desktop_login", return_value=desktop), \
                 mock.patch.object(yt_setup.yt_auth, "_resolve_default_client_secret", return_value=self.missing), \
                 mock.patch.object(yt_setup.yt_auth, "_builtin_client_config", return_value=builtin), \
                 mock.patch.object(yt_setup.yt_auth, "get_oauth_credentials") as login, \
@@ -167,6 +169,12 @@ class BuiltinClientWizardTests(unittest.TestCase):
         login.assert_called_once_with(client_secret_path=self.missing, upload_scope=True, force_reauth=True)
         self.snapshot.assert_called_once_with(client_secret_path=self.missing)
         self.assertFalse((self.missing.parent / "google_auth_secret").exists())
+
+    def test_with_a_mateai_studio_login_the_wizard_still_signs_in(self):
+        # The plugin's own login wins over Studio's, so setup must open the browser to pick an account.
+        text, login = self._run(GOOD, desktop={"refresh_token": "r"})
+        self.assertIn("[2/2]", text)
+        login.assert_called_once_with(client_secret_path=self.missing, upload_scope=True, force_reauth=True)
 
     def test_without_a_builtin_client_the_wizard_still_asks_for_a_client_file(self):
         text, login = self._run(None)

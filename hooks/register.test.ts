@@ -143,7 +143,8 @@ test('/yt-disconnect revokes and deletes through yt_auth.disconnect, then shows 
   expect(runs[0].argv[runs[0].argv.length - 1]).toBe('1') // revoke at Google
   expect(out.text).toMatch(/Google revoked access/)
   expect(out.text).toMatch(/\/yt-setup/)
-  expect(out.text).toMatch(/pick the right account/)
+  expect(out.text).toMatch(/account chooser/)
+  expect(out.text).not.toMatch(/pre-select/)
   expect(hints).toContain('YouTube: not connected, run /yt-setup')
 })
 
@@ -171,6 +172,8 @@ test('/yt-disconnect with a MateAI Studio login deletes the plugin token but nev
   expect(out.text).toMatch(/not revoked/)
   expect(out.text).toMatch(/disconnect YouTube in MateAI Studio/)
   expect(out.text).toMatch(/myaccount\.google\.com\/permissions/)
+  expect(out.text).toMatch(/falls back to your MateAI Studio login/)
+  expect(out.text).toMatch(/run \/yt-setup and pick it in Google's account chooser/)
   expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(false) // still connected through Studio
 })
 
@@ -202,8 +205,8 @@ test('/yt-disconnect when the helper fails does not claim success', async ($, on
 })
 
 // MateAI Studio's login: /usr/bin/security exists and finds the app's Keychain item.
-const appLogin = (on: any, hints?: Array<string | undefined>) => {
-  stub(on, { [PLUGIN]: '', [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}', '/usr/bin/security': '' }, hints)
+const appLogin = (on: any, hints?: Array<string | undefined>, files: Record<string, string> = {}) => {
+  stub(on, { ...files, [PLUGIN]: '', [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}', '/usr/bin/security': '' }, hints)
   const argvs: string[][] = []
   on('process.run', (_: unknown, e: { argv: string[] }) => {
     argvs.push(e.argv)
@@ -214,16 +217,43 @@ const appLogin = (on: any, hints?: Array<string | undefined>) => {
   return argvs
 }
 
-test('with a MateAI Studio login, /yt-setup says connected and starts no second sign-in', async ($, on) => {
-  const argvs = appLogin(on)
+test('with a MateAI Studio login, /yt-setup still opens the sign-in (built-in client, force "1")', async ($, on) => {
+  const argvs = appLogin(on, undefined, { [`${DATA}/.venv/bin/python`]: '' })
   await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
 
   const out = await $.command.run({ command: 'yt-setup', args: '' })
-  await new Promise(r => setTimeout(r, 50))
+  const logins = () => argvs.filter(a => a.includes('-c'))
+  for (let i = 0; i < 50 && logins().length === 0; i++) await new Promise(r => setTimeout(r, 10))
 
-  expect(out.text).toMatch(/MateAI Studio/)
-  expect(argvs.every(a => a[0] === '/usr/bin/security')).toBe(true)
-  expect(argvs.some(a => a.includes('-w'))).toBe(false)
+  expect(out.text).toMatch(/Opening your browser/)
+  expect(out.text).not.toMatch(/Already connected/)
+  expect(logins().length).toBe(1)
+  expect(logins()[0][logins()[0].length - 1]).toBe('1')
+  expect(argvs.some(a => a.includes('-w'))).toBe(false) // never reads Studio's token
+})
+
+test('with a MateAI Studio login, /yt-setup with your own client file also forces the sign-in', async ($, on) => {
+  const logins = await loginArgs($, on, { '/usr/bin/security': '' })
+
+  expect(logins.length).toBe(1)
+  expect(logins[0][logins[0].length - 1]).toBe('1')
+})
+
+test('with a MateAI Studio login and the plugin login fine, /yt-setup says already connected', async ($, on) => {
+  appLogin(on, undefined, { [`${DATA}/.tokens/token.json`]: TOKEN })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: '' })
+
+  expect(out.text).toMatch(/Already connected/)
+})
+
+test('with a MateAI Studio login, an expired plugin login still shows the hint (it wins over Studio)', async ($, on) => {
+  const hints: Array<string | undefined> = []
+  appLogin(on, hints, { [`${DATA}/.tokens/token.json`]: TOKEN, [`${DATA}/.tokens/expired`]: '' })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(true)
 })
 
 test('with a MateAI Studio login, no "not connected" hint at start', async ($, on) => {
@@ -267,7 +297,8 @@ const loginArgs = async ($: any, on: any, files: Record<string, string>) => {
   on('process.run', (_: unknown, e: { argv: string[] }) => {
     if (e.argv.includes('-c')) logins.push(e.argv)
 
-    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+    // A '/usr/bin/security' entry in `files` plus exit 0 here means a MateAI Studio login exists.
+    return { value: { exitCode: e.argv[0] === '/usr/bin/security' ? 0 : 1, stdout: '', stderr: '' } }
   })
   await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
   await $.command.run({ command: 'yt-setup', args: '' })

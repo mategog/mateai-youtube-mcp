@@ -108,11 +108,6 @@ def run_interactive_setup_wizard() -> None:
     print("  MateAI YouTube Studio MCP — Guided 1-Command Setup Wizard")
     print("=" * 72)
 
-    if yt_auth._desktop_login() is not None:
-        print("\nYouTube is connected through the MateAI Studio app, and this plugin uses that login.")
-        print("To sign in again or switch accounts, open MateAI Studio and click Connect YouTube.")
-        return
-
     # With the built-in verified client and no client file of their own, the user has no Google Cloud steps.
     secret_path = yt_auth._resolve_default_client_secret()
     builtin = not secret_path.exists() and yt_auth._builtin_client_config() is not None

@@ -151,11 +151,11 @@ For your own channel, the official APIs above are the recommended default.
 
 Your login lives in `~/.claude/plugins/data/yt-studio-mateai-youtube-mcp/` (`.tokens/token.json`, plus `client_secret.json` if you use your own client, both mode `600`; on Windows `%USERPROFILE%\.claude\plugins\data\yt-studio-mateai-youtube-mcp\`, protected by your user profile folder).
 
-To sign out, or to switch to another channel, type **`/yt-disconnect`**: it revokes the plugin's access at Google and deletes `.tokens/token.json` (your own `client_secret.json` and the TikTok login stay); then run `/yt-setup` and pick the right account in the browser. If Google can't be reached, it still deletes the login and tells you so.
+To sign out, or to switch to another channel, type **`/yt-disconnect`**: it revokes the plugin's access at Google and deletes `.tokens/token.json` (your own `client_secret.json` and the TikTok login stay); then run `/yt-setup`: Google always shows its account chooser, so you can pick any account. If Google can't be reached, it still deletes the login and tells you so.
 
-If you also use MateAI Studio, `/yt-disconnect` only deletes the plugin's own login and does not revoke: both use the same Google sign-in client, and Google revokes per app, so a revoke would sign Studio out too (the plugin then keeps using Studio's login). To cut access fully, disconnect YouTube in MateAI Studio, which revokes it. Manual fallback: delete `.tokens/token.json` and revoke access at <https://myaccount.google.com/permissions>.
+If you also use MateAI Studio, `/yt-disconnect` only deletes the plugin's own login and does not revoke: both use the same Google sign-in client, and Google revokes per app, so a revoke would sign Studio out too. The plugin then falls back to Studio's login until you run `/yt-setup` and pick another account. To cut access fully, disconnect YouTube in MateAI Studio, which revokes it. Manual fallback: delete `.tokens/token.json` and revoke access at <https://myaccount.google.com/permissions>.
 
-**With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio, the plugin uses that login instead (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To keep a separate plugin login, set `MATEAI_DESKTOP_LOGIN=off`.
+**With the MateAI Studio app (macOS):** if you've connected YouTube in MateAI Studio and the plugin has no login of its own, the plugin uses Studio's login (read from the app's Keychain item `dev.mateai.desktop`, never changed), so one Connect covers both. The first time, macOS asks whether `security` may use that item: choose **Always Allow**. To use a different account in the plugin, run `/yt-setup` and pick it: the plugin's own login always wins over Studio's. To never use Studio's login, set `MATEAI_DESKTOP_LOGIN=off`.
 
 ## Troubleshooting
 

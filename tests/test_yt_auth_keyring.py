@@ -88,7 +88,7 @@ class TestKeyringBackend(unittest.TestCase):
         config, scopes = flow_cls.from_client_config.call_args.args
         self.assertEqual(config["installed"]["client_id"], "shared-id")
         self.assertEqual(scopes, yt_auth.SCOPES_READONLY)
-        flow.run_local_server.assert_called_once_with(port=0, prompt="consent")
+        flow.run_local_server.assert_called_once_with(port=0, prompt="select_account consent")
         saved.assert_called_once_with("{}")
 
     def test_a_users_own_client_file_wins_over_the_builtin_client(self):
@@ -269,13 +269,24 @@ class TestDesktopLogin(unittest.TestCase):
             self.assertIsNone(yt_auth._desktop_login())
         run.assert_not_called()
 
-    def test_app_login_wins_over_the_token_file_and_nothing_is_written(self):
-        self.security()
+    def test_app_login_is_used_without_a_token_file_and_nothing_is_written(self):
+        run = self.security()
+        creds = mock.Mock(valid=True, refresh_token="r")
+        self.assertIs(self.call(creds, upload_scope=True), creds)
+        run.assert_called_once()
+        self.assertFalse(self.token_file.exists())
+
+    def test_the_plugins_own_login_wins_over_the_app_login(self):
+        # /yt-setup over a Studio login lets the user pick another account; that login must stick.
+        run = self.security()
         self.token_file.parent.mkdir(parents=True)
         self.token_file.write_text(json.dumps(TOKEN_INFO), encoding="utf-8")
         creds = mock.Mock(valid=True, refresh_token="r")
-        self.assertIs(self.call(creds, upload_scope=True), creds)
-        self.assertEqual(json.loads(self.token_file.read_text()), TOKEN_INFO)
+        mods = _google_modules(creds)
+        with mock.patch.dict(sys.modules, mods):
+            self.assertIs(yt_auth.get_oauth_credentials(), creds)
+        run.assert_not_called()  # Studio's Keychain item is never read
+        mods["google.oauth2.credentials"].Credentials.from_authorized_user_info.assert_not_called()
 
     def test_expired_access_token_is_refreshed_in_memory_once(self):
         self.security()
@@ -314,18 +325,6 @@ class TestDesktopLogin(unittest.TestCase):
         self.security()
         self.assertTrue(yt_auth.has_login())
 
-    def test_setup_wizard_sends_app_users_to_mateai_studio(self):
-        import contextlib
-        import io
-        import webbrowser
-        import yt_setup
-        run = self.security()  # patches subprocess.run, so a wizard that kept going couldn't build a venv
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out), \
-                mock.patch.object(webbrowser, "open", side_effect=AssertionError("setup continued")):
-            yt_setup.run_interactive_setup_wizard()
-        self.assertIn("open MateAI Studio and click Connect YouTube", out.getvalue())
-        self.assertEqual(run.call_count, 1)  # only the Keychain read
 
 if __name__ == "__main__":
     unittest.main()

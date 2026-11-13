@@ -5,8 +5,9 @@
 # MateAI YouTube MCP
 
 **Upload, schedule and analyze your YouTube channel just by asking Claude or Antigravity.**<br/>
-Free. Runs on your computer. One sign-in.
+Free. Runs on your computer. One sign-in, verified by Google.
 
+[![Google OAuth: verified](https://img.shields.io/badge/Google%20OAuth-verified-2ea44f)](docs/SETUP.md#claude-code)
 [![Release](https://img.shields.io/github/v/release/mategog/mateai-youtube-mcp?color=238636)](https://github.com/mategog/mateai-youtube-mcp/releases/latest)
 [![mategog/mateai-youtube-mcp MCP server](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mategog/mateai-youtube-mcp)
 [![License](https://img.shields.io/badge/license-Apache%202.0%20%2B%20Commons%20Clause-blue.svg)](LICENSE)

@@ -23,6 +23,7 @@ type Paths = {
   secret: string
   token: string
   expired: string
+  signedOut: string
   venvPython: string
 }
 
@@ -41,6 +42,8 @@ const paths = async ($: Api): Promise<Paths> => {
     secret: `${data}/google_auth_secret/client_secret.json`,
     token: `${data}/.tokens/token.json`,
     expired: `${data}/.tokens/expired`,
+    // Left by /yt-disconnect (yt_auth.py): no fallback to MateAI Studio's login until the next sign-in.
+    signedOut: `${data}/.tokens/signed_out`,
     // A Windows venv keeps its interpreter in Scripts\python.exe, not bin/python.
     venvPython: isWindows ? `${data}/.venv/Scripts/python.exe` : `${data}/.venv/bin/python`,
   }
@@ -148,16 +151,18 @@ const DISCONNECT_CODE = [
 ].join('\n')
 
 const NOT_CONNECTED = 'YouTube is not connected. Nothing to do.'
-const STUDIO_LOGIN = 'This plugin uses your MateAI Studio login. To use another account in the plugin, run /yt-setup and pick it in Google\'s account chooser. To disconnect Studio\'s login, open MateAI Studio and disconnect YouTube there.'
+const RECONNECT = 'To connect another account or channel, run /yt-setup and pick it in Google\'s account chooser.'
 const PERMISSIONS = 'https://myaccount.google.com/permissions'
 
-// Revokes the plugin's own login at Google (best effort) and deletes it; yt_auth.disconnect() does both.
-// With a MateAI Studio login it only deletes: the built-in client is Studio's, and Google revokes the
-// whole user+client grant, so a revoke here would sign Studio out too.
+// Signs the plugin out until the next /yt-setup: yt_auth.disconnect() revokes the plugin's own login
+// at Google (best effort), deletes it, and stops the fallback to a MateAI Studio login.
+// With a MateAI Studio login it does not revoke: the built-in client is Studio's, and Google revokes
+// the whole user+client grant, so a revoke here would sign Studio out too.
 const disconnect = async ($: Api) => {
   const p = await paths($)
   const appLogin = await hasAppLogin($)
-  if (!(await usesKeyring($)) && !(await $.fs.exists(p.token))) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
+  const usesAppLogin = appLogin && !(await $.fs.exists(p.signedOut))
+  if (!(await usesKeyring($)) && !(await $.fs.exists(p.token)) && !usesAppLogin) return { text: NOT_CONNECTED }
 
   const root = await pluginRoot($, p)
   if (root === undefined) {
@@ -174,29 +179,33 @@ const disconnect = async ($: Api) => {
   } catch {}
   if (run.exitCode !== 0 || result === undefined) {
     return {
-      text: `Could not disconnect: ${run.stderr.trim().slice(-200)}\nTo do it by hand, delete ${p.token} and remove access at ${PERMISSIONS}.`,
+      text: `Could not disconnect: ${run.stderr.trim().slice(-200)}\nTo do it by hand, delete ${p.token}${appLogin ? `, create an empty file ${p.signedOut}` : ''} and remove access at ${PERMISSIONS}.`,
     }
   }
-  if (!result.had_login) return { text: appLogin ? STUDIO_LOGIN : NOT_CONNECTED }
+  if (!result.had_login && !appLogin) return { text: NOT_CONNECTED }
+  $.ui.status('YouTube: not connected, run /yt-setup')
 
   if (appLogin) {
     return {
-      text: `Removed the plugin's own YouTube login from this computer. Google access was not revoked, because MateAI Studio uses the same Google sign-in and a revoke would sign Studio out too. The plugin now falls back to your MateAI Studio login. To use another account in the plugin, run /yt-setup and pick it in Google's account chooser. To cut Google access fully, disconnect YouTube in MateAI Studio (that revokes it) or remove access at ${PERMISSIONS}. If the plugin was signed in to a different Google account than Studio, remove access for that account at ${PERMISSIONS}.`,
+      text: [
+        `Disconnected. The plugin is signed out and does not use your MateAI Studio login${result.had_login ? '; its own saved login was removed from this computer' : ''}.`,
+        `Google access was not revoked, because MateAI Studio uses the same Google sign-in and a revoke would sign Studio out too. To cut it fully, disconnect YouTube in MateAI Studio (that revokes it) or remove access at ${PERMISSIONS}${result.had_login ? ' (for the plugin\'s account too, if it was a different one than Studio\'s)' : ''}.`,
+        RECONNECT,
+      ].join('\n'),
     }
   }
-  $.ui.status('YouTube: not connected, run /yt-setup')
 
   return {
     text: [
       result.revoked
         ? 'Disconnected. Google revoked access and the saved login was removed from this computer.'
         : `The saved login was removed from this computer, but Google did not confirm the revoke (offline, or the login was already invalid). To be sure, remove access at ${PERMISSIONS}.`,
-      'To connect another account or channel, run /yt-setup and pick it in Google\'s account chooser.',
+      RECONNECT,
     ].join('\n'),
   }
 }
 
-const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' | 'expired', force = false) => {
+const connect = async ($: Api, p: Paths, root: string, state: 'ok' | 'none' | 'scopes' | 'expired', force = false) => {
   const env = { MATEAI_YT_HOME: p.data }
   if (!(await $.fs.exists(p.venvPython))) {
     $.ui.toast('yt-setup: installing Google libraries (about a minute)…')
@@ -218,12 +227,14 @@ const connect = async ($: Api, p: Paths, root: string, state: 'none' | 'scopes' 
     [p.venvPython, '-c', LOGIN_CODE, force || state === 'scopes' || state === 'expired' ? '1' : '0'],
     { cwd: root, env, timeoutMs: 600000 },
   ).catch((err: unknown) => ({ exitCode: 1, stdout: '', stderr: String(err) }))
-  const isOk = login.exitCode === 0 && (await loginState($, p)) === 'ok'
-  $.ui.status(isOk ? undefined : 'YouTube: not connected, run /yt-setup')
+  // The hint follows the saved login, not the exit code: a cancelled /yt-setup switch keeps the old login.
+  const hasLogin = (await loginState($, p)) === 'ok'
+  const isOk = login.exitCode === 0 && hasLogin
+  $.ui.status(hasLogin ? undefined : 'YouTube: not connected, run /yt-setup')
   $.ui.toast(
     isOk
       ? 'yt-setup: connected! YouTube tools are ready.'
-      : `yt-setup: login did not finish. ${login.stderr.trim().slice(-200)}`,
+      : `yt-setup: login did not finish${hasLogin ? '; your previous login still works' : ''}. ${login.stderr.trim().slice(-200)}`,
   )
 }
 
@@ -233,7 +244,8 @@ const registerSetup: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'yt-setup',
-      description: 'Connect the yt-studio plugin to your YouTube account (one-time)',
+      description: 'Connect the yt-studio plugin to your YouTube account; "switch" picks another account',
+      argumentHint: '[switch]',
     })
     await $.command.register({
       name: 'yt-disconnect',
@@ -242,23 +254,32 @@ const registerSetup: Register = on => {
     await $.command.register(dashboardCommand)
     projectDir = e.cwd
     const p = await paths($)
-    // The plugin's own login wins over Studio's, so only a missing one falls back to Studio's.
+    // The plugin's own login wins over Studio's, so only a missing one falls back to Studio's,
+    // and never after /yt-disconnect.
     const state = await loginState($, p)
-    if (state !== 'ok' && (state !== 'none' || !(await hasAppLogin($)))) $.ui.status('YouTube: not connected, run /yt-setup')
+    const usesAppLogin = state === 'none' && !(await $.fs.exists(p.signedOut)) && (await hasAppLogin($))
+    if (state !== 'ok' && !usesAppLogin) $.ui.status('YouTube: not connected, run /yt-setup')
 
     return next(e)
   })
 
   on('command.run', { command: 'yt-disconnect' }, async $ => disconnect($))
 
-  on('command.run', { command: 'yt-setup' }, async $ => {
+  on('command.run', { command: 'yt-setup' }, async ($, e) => {
     const p = await paths($)
     const state = await loginState($, p)
-    if (state === 'ok') {
+    // switch: a fresh sign-in with Google's account chooser. The current login is overwritten only when
+    // it succeeds, and is not revoked: a revoke ends the user+client grant, so it could end the new
+    // login (same account) or MateAI Studio's (same client).
+    const switching = e.args.trim().toLowerCase() === 'switch'
+    if (state === 'ok' && !switching) {
       $.ui.status(undefined)
 
-      return { text: 'Already connected. To sign out or switch to another channel, run /yt-disconnect, then /yt-setup.' }
+      return { text: 'Already connected. To switch to another account or channel, run /yt-setup switch. To sign out, run /yt-disconnect.' }
     }
+    const opening = switching && state === 'ok'
+      ? 'Opening your browser: pick the account to switch to and click Allow. Your current login keeps working until the new sign-in finishes.'
+      : 'Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.'
 
     const root = await pluginRoot($, p)
     if (root === undefined) {
@@ -271,7 +292,7 @@ const registerSetup: Register = on => {
       // force: yt_auth.py starts a built-in-client sign-in only for setup, never from a tool call.
       void connect($, p, root, state, true)
 
-      return { text: 'Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.' }
+      return { text: opening }
     }
 
     const secret = await findSecret($, p, projectDir)
@@ -307,10 +328,12 @@ const registerSetup: Register = on => {
     }
 
     // The login waits for the person in the browser, so it runs on after this answer. Force it over a
-    // MateAI Studio login, or yt_auth.py would just return Studio's login and open no browser.
-    void connect($, p, root, state, await hasAppLogin($))
+    // MateAI Studio login, or yt_auth.py would just return Studio's login and open no browser, and
+    // after /yt-disconnect, when yt_auth.py starts a sign-in only for setup, and for a switch, or it
+    // would just reuse the working login.
+    void connect($, p, root, state, switching || (await hasAppLogin($)) || (await $.fs.exists(p.signedOut)))
 
-    return { text: `Found your Google client file. Opening your browser: sign in with the YouTube account, click Allow, and wait for the "connected" message.${secret === p.secret ? '' : `\n(Copied ${secret} into the plugin folder, ${p.isWindows ? 'private to your Windows user' : 'permissions 600'}.)`}` }
+    return { text: `Found your Google client file. ${opening}${secret === p.secret ? '' : `\n(Copied ${secret} into the plugin folder, ${p.isWindows ? 'private to your Windows user' : 'permissions 600'}.)`}` }
   })
 }
 

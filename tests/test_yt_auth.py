@@ -78,6 +78,27 @@ class TestExpiredLogin(unittest.TestCase):
         self.assertIs(result, creds)
         creds.refresh.assert_called_once()
 
+    def _refresh_while(self, change):
+        """A tool call refreshes the old login while `change(token)` runs in another process."""
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / "token.json"
+            token.write_text(FULL_TOKEN, encoding="utf-8")
+            creds = mock.Mock(valid=False, expired=True, refresh_token="r", granted_scopes=None)
+            creds.to_json.return_value = json.dumps({"refresh_token": "r", "token": "refreshed-old"})
+            creds.refresh.side_effect = lambda _: change(token)
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, _fake_google_modules(creds)):
+                self.assertIs(yt_studio.get_oauth_credentials(), creds)
+            return json.loads(token.read_text(encoding="utf-8")) if token.exists() else None
+
+    def test_a_refresh_never_overwrites_a_login_saved_meanwhile_by_yt_setup_switch(self):
+        new = {"refresh_token": "r-new-account", "scopes": yt_auth.SCOPES_WITH_UPLOAD}
+        saved = self._refresh_while(lambda t: t.write_text(json.dumps(new), encoding="utf-8"))
+        self.assertEqual(saved, new)
+
+    def test_a_refresh_never_brings_back_a_login_deleted_meanwhile_by_yt_disconnect(self):
+        self.assertIsNone(self._refresh_while(lambda t: t.unlink()))
+
 
 class TestExpiredMarker(unittest.TestCase):
     """A failed refresh leaves `.tokens/expired` so /yt-setup knows the saved login is dead."""
@@ -129,11 +150,29 @@ class TestExpiredMarker(unittest.TestCase):
                 yt_studio.get_oauth_credentials()
             self.assertFalse((token.parent / "expired").exists())
 
+    def test_after_yt_disconnect_a_tool_call_never_starts_a_sign_in(self):
+        # With the user's own client file a tool call used to open the browser; /yt-disconnect must stick.
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / ".tokens" / "token.json"
+            token.parent.mkdir()
+            (token.parent / "signed_out").write_text("", encoding="utf-8")
+            secret = Path(tmp) / "client_secret.json"
+            secret.write_text("{}", encoding="utf-8")
+            mods = _fake_google_modules(None)
+            mods["google_auth_oauthlib.flow"].InstalledAppFlow = types.SimpleNamespace(
+                from_client_secrets_file=mock.Mock(side_effect=AssertionError("sign-in started"))
+            )
+            with mock.patch.object(yt_auth, "TOKEN_FILE", token), \
+                    mock.patch.dict(sys.modules, mods), \
+                    self.assertRaisesRegex(FileNotFoundError, "/yt-setup"):
+                yt_studio.get_oauth_credentials(client_secret_path=secret)
+
     def test_fresh_sign_in_removes_the_marker(self):
         with tempfile.TemporaryDirectory() as tmp:
             token = Path(tmp) / ".tokens" / "token.json"
             token.parent.mkdir()
             (token.parent / "expired").write_text("", encoding="utf-8")
+            (token.parent / "signed_out").write_text("", encoding="utf-8")  # left by /yt-disconnect
             secret = Path(tmp) / "client_secret.json"
             secret.write_text("{}", encoding="utf-8")
             new_creds = mock.Mock(granted_scopes=None)
@@ -149,6 +188,7 @@ class TestExpiredMarker(unittest.TestCase):
                 yt_studio.get_oauth_credentials(client_secret_path=secret, force_reauth=True)
             self.assertTrue(token.exists())
             self.assertFalse((token.parent / "expired").exists())
+            self.assertFalse((token.parent / "signed_out").exists())
 
     def test_marker_left_behind_by_a_deleted_tokens_folder_does_not_block_sign_in(self):
         with tempfile.TemporaryDirectory() as tmp:

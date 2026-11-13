@@ -35,6 +35,8 @@ const stub = (on: any, files: Record<string, string>, hints?: Array<string | und
 
 const DATA = '/home/u/.claude/plugins/data/yt-studio-mateai-youtube-mcp'
 const PLUGIN = '/home/u/.claude/plugins/cache/mateai-youtube-mcp/yt-studio'
+// Left by /yt-disconnect: the plugin stays signed out (no fallback to MateAI Studio's login) until /yt-setup.
+const SIGNED_OUT = `${DATA}/.tokens/signed_out`
 
 test('says it is already connected when the token has every scope', async ($, on) => {
   stub(on, { [`${DATA}/.tokens/token.json`]: TOKEN })
@@ -103,7 +105,77 @@ test('/yt-setup when connected points to /yt-disconnect, not the manual delete',
   const out = await $.command.run({ command: 'yt-setup', args: '' })
 
   expect(out.text).toMatch(/\/yt-disconnect/)
+  expect(out.text).toMatch(/\/yt-setup switch/)
   expect(out.text).not.toMatch(/delete the \.tokens/)
+})
+
+test('/yt-setup switch when connected opens a forced sign-in (built-in client) and keeps the current login meanwhile', async ($, on) => {
+  stub(on, {
+    [`${DATA}/.tokens/token.json`]: TOKEN,
+    [PLUGIN]: '',
+    [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}',
+    [`${DATA}/.venv/bin/python`]: '',
+  })
+  const logins: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    if (e.argv.includes('-c')) logins.push(e.argv)
+
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-setup', args: 'switch' })
+  for (let i = 0; i < 50 && logins.length === 0; i++) await new Promise(r => setTimeout(r, 10))
+
+  expect(out.text).not.toMatch(/Already connected/)
+  expect(out.text).toMatch(/Opening your browser/)
+  expect(out.text).toMatch(/current login keeps working/)
+  expect(logins.length).toBe(1)
+  expect(logins[0][logins[0].length - 1]).toBe('1')
+})
+
+test('a failed first /yt-setup still shows the "not connected" hint', async ($, on) => {
+  const hints: Array<string | undefined> = []
+  stub(on, { [PLUGIN]: '', [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}', [`${DATA}/.venv/bin/python`]: '' }, hints)
+  const logins: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    if (e.argv.includes('-c')) logins.push(e.argv)
+
+    return { value: { exitCode: 1, stdout: '', stderr: 'closed the tab' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+  hints.length = 0
+
+  await $.command.run({ command: 'yt-setup', args: '' })
+  for (let i = 0; i < 50 && hints.length === 0; i++) await new Promise(r => setTimeout(r, 10))
+
+  expect(logins.length).toBe(1)
+  expect(hints).toContain('YouTube: not connected, run /yt-setup')
+})
+
+test('a cancelled /yt-setup switch leaves the previous login connected: no "not connected" hint', async ($, on) => {
+  const hints: Array<string | undefined> = []
+  stub(on, {
+    [`${DATA}/.tokens/token.json`]: TOKEN,
+    [PLUGIN]: '',
+    [`${PLUGIN}/1.0.5/oauth_client.json`]: '{"installed":{}}',
+    [`${DATA}/.venv/bin/python`]: '',
+  }, hints)
+  const logins: string[][] = []
+  on('process.run', (_: unknown, e: { argv: string[] }) => {
+    if (e.argv.includes('-c')) logins.push(e.argv)
+
+    return { value: { exitCode: 1, stdout: '', stderr: 'closed the tab' } }
+  })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+  hints.length = 0
+
+  await $.command.run({ command: 'yt-setup', args: 'switch' })
+  for (let i = 0; i < 50 && hints.length === 0; i++) await new Promise(r => setTimeout(r, 10))
+
+  expect(logins.length).toBe(1) // the sign-in ran
+  expect(hints.length).toBe(1) // and finished
+  expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(false)
 })
 
 // Runs /yt-disconnect; the Python helper (yt_auth.disconnect) answers with `reply` on stdout.
@@ -160,7 +232,7 @@ test('/yt-disconnect when Google does not confirm: login still removed, honest m
   expect(hints).toContain('YouTube: not connected, run /yt-setup')
 })
 
-test('/yt-disconnect with a MateAI Studio login deletes the plugin token but never revokes', async ($, on) => {
+test('/yt-disconnect with a MateAI Studio login deletes the plugin token, never revokes, and signs the plugin out', async ($, on) => {
   const { out, runs, hints } = await runDisconnect(
     $, on, { [`${DATA}/.tokens/token.json`]: TOKEN, '/usr/bin/security': '' }, '{"had_login": true, "revoked": false}\n',
   )
@@ -168,13 +240,45 @@ test('/yt-disconnect with a MateAI Studio login deletes the plugin token but nev
 
   expect(helper.length).toBe(1)
   expect(helper[0].argv[helper[0].argv.length - 1]).toBe('0') // no revoke: it would sign Studio out too
-  expect(out.text).toMatch(/Removed the plugin's own YouTube login/)
+  expect(out.text).toMatch(/^Disconnected\./)
   expect(out.text).toMatch(/not revoked/)
   expect(out.text).toMatch(/disconnect YouTube in MateAI Studio/)
   expect(out.text).toMatch(/myaccount\.google\.com\/permissions/)
-  expect(out.text).toMatch(/falls back to your MateAI Studio login/)
+  expect(out.text).toMatch(/does not use your MateAI Studio login/)
+  expect(out.text).not.toMatch(/falls back/)
   expect(out.text).toMatch(/run \/yt-setup and pick it in Google's account chooser/)
-  expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(false) // still connected through Studio
+  expect(hints).toContain('YouTube: not connected, run /yt-setup')
+})
+
+test('/yt-disconnect with only a MateAI Studio login still signs the plugin out', async ($, on) => {
+  const { out, runs, hints } = await runDisconnect($, on, { '/usr/bin/security': '' }, '{"had_login": false, "revoked": false}\n')
+  const helper = runs.filter(r => r.argv[0] !== '/usr/bin/security')
+
+  expect(helper.length).toBe(1)
+  expect(helper[0].argv[helper[0].argv.length - 1]).toBe('0') // Studio keeps its Google access
+  expect(out.text).toMatch(/^Disconnected\./)
+  expect(out.text).toMatch(/does not use your MateAI Studio login/)
+  expect(hints).toContain('YouTube: not connected, run /yt-setup')
+})
+
+test('/yt-disconnect when the helper fails, with a MateAI Studio login: the by-hand steps include the signed-out file', async ($, on) => {
+  stub(on, { [`${DATA}/.tokens/token.json`]: TOKEN, [PLUGIN]: '', '/usr/bin/security': '' })
+  on('process.run', (_: unknown, e: { argv: string[] }) => ({
+    value: { exitCode: e.argv[0] === '/usr/bin/security' ? 0 : 1, stdout: '', stderr: 'boom' },
+  }))
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  const out = await $.command.run({ command: 'yt-disconnect', args: '' })
+
+  expect(out.text).toMatch(/Could not disconnect/)
+  expect(out.text).toMatch(/\.tokens\/signed_out/) // deleting the token alone would fall back to Studio's login
+})
+
+test('/yt-disconnect a second time, with a MateAI Studio login, says not connected and runs nothing', async ($, on) => {
+  const { out, runs } = await runDisconnect($, on, { '/usr/bin/security': '', [SIGNED_OUT]: '' }, '')
+
+  expect(out.text).toMatch(/not connected/)
+  expect(runs.filter(r => r.argv[0] !== '/usr/bin/security').length).toBe(0)
 })
 
 test('keyring mode ignores the Studio Keychain item, as yt_auth.py does: revoke, "not connected"', async ($, on) => {
@@ -264,6 +368,14 @@ test('with a MateAI Studio login, no "not connected" hint at start', async ($, o
   expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(false)
 })
 
+test('after /yt-disconnect, a MateAI Studio login no longer hides the "not connected" hint at start', async ($, on) => {
+  const hints: Array<string | undefined> = []
+  appLogin(on, hints, { [SIGNED_OUT]: '' })
+  await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
+
+  expect(hints.some(h => /not connected/.test(h ?? ''))).toBe(true)
+})
+
 const MARKER = `${DATA}/.tokens/expired`
 
 test('starts the sign-in, not "Already connected", when the login is marked expired', async ($, on) => {
@@ -286,7 +398,7 @@ test('shows the "not connected" hint at start when the login is marked expired',
 
 // Runs /yt-setup with the Google libraries "installed" and a client file in place, and returns
 // the argv of the login process (the force_reauth flag is its last argument).
-const loginArgs = async ($: any, on: any, files: Record<string, string>) => {
+const loginArgs = async ($: any, on: any, files: Record<string, string>, args = '') => {
   stub(on, {
     ...files,
     [`${DATA}/.venv/bin/python`]: '',
@@ -301,7 +413,7 @@ const loginArgs = async ($: any, on: any, files: Record<string, string>) => {
     return { value: { exitCode: e.argv[0] === '/usr/bin/security' ? 0 : 1, stdout: '', stderr: '' } }
   })
   await $.session.start({ cwd: '/proj', surface: 'desktop', isInteractive: true })
-  await $.command.run({ command: 'yt-setup', args: '' })
+  await $.command.run({ command: 'yt-setup', args })
   // The login runs on after the command's answer, so give it a moment to start.
   for (let i = 0; i < 50 && logins.length === 0; i++) await new Promise(r => setTimeout(r, 10))
 
@@ -320,6 +432,20 @@ test('keeps the plain refresh (force_reauth "0") when the login is fine but not 
 
   expect(logins.length).toBe(1)
   expect(logins[0][logins[0].length - 1]).toBe('0')
+})
+
+test('after /yt-disconnect, /yt-setup with your own client file forces the sign-in (yt_auth.py refuses a plain one)', async ($, on) => {
+  const logins = await loginArgs($, on, { [SIGNED_OUT]: '' })
+
+  expect(logins.length).toBe(1)
+  expect(logins[0][logins[0].length - 1]).toBe('1')
+})
+
+test('/yt-setup switch with your own client file forces the sign-in over a working login', async ($, on) => {
+  const logins = await loginArgs($, on, { [`${DATA}/.tokens/token.json`]: TOKEN }, 'switch')
+
+  expect(logins.length).toBe(1)
+  expect(logins[0][logins[0].length - 1]).toBe('1')
 })
 
 test('a stale marker without a token folder does not trap the user', async ($, on) => {

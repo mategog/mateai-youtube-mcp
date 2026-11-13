@@ -71,7 +71,8 @@ With the built-in client, your API calls run under the author's Google Cloud pro
 - Creates a Python virtual environment in the data folder and runs `pip install -r requirements.txt` (from PyPI: `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`).
 - Starts Google's sign-in in your browser, always with Google's account chooser, even when MateAI Studio is connected (the plugin's own login then wins over Studio's). Your Google password is typed on Google's own page and never reaches this plugin.
 - Reads your saved token only to check which permissions it holds.
-- `/yt-disconnect` sends the saved token to Google's revoke endpoint (`https://oauth2.googleapis.com/revoke`, in the request body), then deletes it. When a MateAI Studio login exists it skips the revoke (it would end Studio's login too) and only deletes the plugin's file, so the plugin falls back to Studio's login; Studio's Keychain item is never changed.
+- `/yt-setup switch` starts the same sign-in while you are connected. The new login overwrites `.tokens/token.json` only when the sign-in succeeds; the previous one is not revoked (Google revokes per account and app, so that could end the new login or MateAI Studio's).
+- `/yt-disconnect` sends the saved token to Google's revoke endpoint (`https://oauth2.googleapis.com/revoke`, in the request body), then deletes it. When a MateAI Studio login exists it skips the revoke (it would end Studio's login too) and only deletes the plugin's file. Either way it leaves an empty `.tokens/signed_out` file, so the plugin stays signed out, does not use Studio's login and starts no sign-in from a tool call; the next `/yt-setup` sign-in removes the file. Studio's Keychain item is never changed.
 
 Where your login lives and how to remove it: [SETUP.md → Sign out or switch channel](SETUP.md#sign-out-or-switch-channel).
 

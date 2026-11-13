@@ -114,6 +114,13 @@ def _saved_scopes(token_file: Path) -> list[str]:
     return _scopes_of(json.loads(token_file.read_text(encoding="utf-8")))
 
 
+def _saved_refresh_token() -> str | None:
+    try:
+        return json.loads(TOKEN_FILE.read_text(encoding="utf-8")).get("refresh_token")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def _has_own_token() -> bool:
     """A readable token file; an empty or corrupt one must not hide a working MateAI Studio login."""
     try:
@@ -137,9 +144,9 @@ _desktop_cache = None  # Credentials refreshed from the app's login, reused whil
 
 def _desktop_login() -> dict | None:
     """MateAI Studio's saved login, or None (not macOS, no app login, access denied, turned off with
-    MATEAI_DESKTOP_LOGIN=off, or we are the app's own MCP)."""
+    MATEAI_DESKTOP_LOGIN=off, signed out with /yt-disconnect, or we are the app's own MCP)."""
     off = os.environ.get("MATEAI_DESKTOP_LOGIN", "").strip().lower() in ("off", "0", "false")
-    if off or sys.platform != "darwin" or _use_keyring() or _launched_by_desktop():
+    if off or sys.platform != "darwin" or _use_keyring() or _launched_by_desktop() or _signed_out_marker().exists():
         return None
     try:
         # The first read shows a macOS prompt ("security wants to use ... dev.mateai.desktop"): Always Allow.
@@ -187,6 +194,12 @@ def has_login() -> bool:
 def _expired_marker() -> Path:
     """`.tokens/expired`: left by a failed refresh so /yt-setup knows the saved login is dead."""
     return TOKEN_FILE.with_name("expired")
+
+
+def _signed_out_marker() -> Path:
+    """`.tokens/signed_out`: left by /yt-disconnect so the plugin stays signed out, instead of falling
+    back to MateAI Studio's login, until the next sign-in."""
+    return TOKEN_FILE.with_name("signed_out")
 
 
 def _sign_in_again() -> str:
@@ -284,6 +297,7 @@ def get_oauth_credentials(
             )
         # A refresh can't add scopes the user never granted, so a missing scope always means consent.
         if not force_reauth and creds and creds.expired and covers_request and creds.refresh_token:
+            loaded_refresh_token = creds.refresh_token
             try:
                 creds.refresh(Request())
             except RefreshError as exc:
@@ -297,17 +311,23 @@ def get_oauth_credentials(
                     "Your YouTube login expired or was revoked, so Google refused to renew it. "
                     f"{_sign_in_again()}{testing_note}\nDetails: {exc}"
                 ) from exc
+            # /yt-setup switch or /yt-disconnect may have replaced or deleted the file while this
+            # refresh ran (another process): use the refreshed login for this call, but don't save it back.
+            # shortcut: the keyring backend has no such check; add one if it ever gets a switch.
+            if not use_keyring and _saved_refresh_token() != loaded_refresh_token:
+                return creds
         else:
             builtin = None if client_secret_path.exists() else _builtin_client_config()
             if builtin and force_reauth:
                 flow = InstalledAppFlow.from_client_config(builtin, scopes)
-            elif client_secret_path.exists():
+            elif client_secret_path.exists() and (force_reauth or not _signed_out_marker().exists()):
                 flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
             elif _launched_by_desktop():
                 raise FileNotFoundError("YouTube isn't connected yet. Open MateAI Studio and click Connect YouTube.")
-            elif builtin:
-                # Only setup (force_reauth) starts a browser sign-in with the built-in client: started
-                # from a tool call it would block the single-threaded MCP server until someone clicks Allow.
+            elif builtin or client_secret_path.exists():
+                # Only setup (force_reauth) starts a browser sign-in with the built-in client, or after
+                # /yt-disconnect: started from a tool call it would block the single-threaded MCP server
+                # until someone clicks Allow, and would undo the sign-out.
                 raise FileNotFoundError(
                     "YouTube sign-in needed. Type /yt-setup in Claude Code, or run `python3 yt_studio.py setup`."
                 )
@@ -331,8 +351,9 @@ def get_oauth_credentials(
             _keyring_set(token_json)
         else:
             _write_private(TOKEN_FILE, token_json)
-        with contextlib.suppress(OSError):
-            _expired_marker().unlink(missing_ok=True)
+        for marker in (_expired_marker(), _signed_out_marker()):
+            with contextlib.suppress(OSError):
+                marker.unlink(missing_ok=True)
         if creds.granted_scopes and not set(scopes) <= set(creds.granted_scopes):
             raise RuntimeError(_missing_scopes_message(scopes, creds.granted_scopes))
 
@@ -364,7 +385,9 @@ def disconnect(revoke: bool = True) -> dict:
     """Revoke this plugin's saved login at Google (best effort), then delete it locally either way.
 
     revoke=False only deletes it: the built-in client is MateAI Studio's, and Google revokes the whole
-    user+client grant, so revoking here would also sign Studio out. client_secret.json is left alone."""
+    user+client grant, so revoking here would also sign Studio out. client_secret.json is left alone.
+    Either way the plugin stays signed out (no fallback to Studio's login) until the next sign-in."""
+    _write_private(_signed_out_marker(), "")  # first: if this fails, nothing was disconnected
     use_keyring = _use_keyring()
     has_file = not use_keyring and TOKEN_FILE.exists()
     stored = _keyring_get() if use_keyring else (TOKEN_FILE.read_text(encoding="utf-8") if has_file else None)

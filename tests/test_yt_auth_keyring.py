@@ -327,6 +327,14 @@ class TestDesktopLogin(unittest.TestCase):
             self.call(mock.Mock(), force_reauth=True, client_secret_path=Path(self.tmp.name) / "none.json")
         run.assert_not_called()
 
+    def test_after_yt_disconnect_the_app_login_is_neither_used_nor_read(self):
+        run = self.security()
+        self.token_file.parent.mkdir(parents=True)
+        (self.token_file.parent / "signed_out").write_text("", encoding="utf-8")
+        self.assertIsNone(yt_auth._desktop_login())
+        self.assertFalse(yt_auth.has_login())
+        run.assert_not_called()
+
     def test_has_login(self):
         self.security(None, 44)
         self.assertFalse(yt_auth.has_login())

@@ -181,7 +181,7 @@ const disconnect = async ($: Api) => {
 
   if (appLogin) {
     return {
-      text: `Removed the plugin's own YouTube login from this computer. Google access was not revoked, because MateAI Studio uses the same Google sign-in and a revoke would sign Studio out too. The plugin now falls back to your MateAI Studio login. To use another account in the plugin, run /yt-setup and pick it in Google's account chooser. To cut Google access fully, disconnect YouTube in MateAI Studio (that revokes it) or remove access at ${PERMISSIONS}.`,
+      text: `Removed the plugin's own YouTube login from this computer. Google access was not revoked, because MateAI Studio uses the same Google sign-in and a revoke would sign Studio out too. The plugin now falls back to your MateAI Studio login. To use another account in the plugin, run /yt-setup and pick it in Google's account chooser. To cut Google access fully, disconnect YouTube in MateAI Studio (that revokes it) or remove access at ${PERMISSIONS}. If the plugin was signed in to a different Google account than Studio, remove access for that account at ${PERMISSIONS}.`,
     }
   }
   $.ui.status('YouTube: not connected, run /yt-setup')

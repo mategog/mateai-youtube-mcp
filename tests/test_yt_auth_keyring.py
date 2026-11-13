@@ -288,6 +288,14 @@ class TestDesktopLogin(unittest.TestCase):
         run.assert_not_called()  # Studio's Keychain item is never read
         mods["google.oauth2.credentials"].Credentials.from_authorized_user_info.assert_not_called()
 
+    def test_a_corrupt_token_file_does_not_hide_the_app_login(self):
+        run = self.security()
+        self.token_file.parent.mkdir(parents=True)
+        self.token_file.write_text("", encoding="utf-8")
+        creds = mock.Mock(valid=True, refresh_token="r")
+        self.assertIs(self.call(creds, upload_scope=True), creds)
+        run.assert_called_once()
+
     def test_expired_access_token_is_refreshed_in_memory_once(self):
         self.security()
         creds = mock.Mock(valid=False, refresh_token="r")

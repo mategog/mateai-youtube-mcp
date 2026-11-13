@@ -114,6 +114,15 @@ def _saved_scopes(token_file: Path) -> list[str]:
     return _scopes_of(json.loads(token_file.read_text(encoding="utf-8")))
 
 
+def _has_own_token() -> bool:
+    """A readable token file; an empty or corrupt one must not hide a working MateAI Studio login."""
+    try:
+        _saved_scopes(TOKEN_FILE)
+        return True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def _launched_by_desktop() -> bool:
     """MateAI Studio sets MATEAI_LAUNCHER=desktop in the MCP entry it writes; its users sign in there."""
     return os.environ.get("MATEAI_LAUNCHER", "").strip().lower() == "desktop"
@@ -242,7 +251,7 @@ def get_oauth_credentials(
 
     scopes = SCOPES_WITH_UPLOAD if upload_scope else SCOPES_READONLY
     # The plugin's own login (made by /yt-setup) wins, so the user can pick another account than Studio's.
-    desktop = None if force_reauth or TOKEN_FILE.exists() else _desktop_login()
+    desktop = None if force_reauth or _has_own_token() else _desktop_login()
     if desktop is not None:
         return _desktop_credentials(desktop, scopes, Credentials, Request, RefreshError)
     creds = None

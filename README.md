@@ -29,7 +29,7 @@ claude plugin marketplace add mategog/mateai-youtube-mcp
 claude plugin install yt-studio@mateai-youtube-mcp
 ```
 
-**2. Connect your channel.** Type **`/yt-setup`** in Claude Code, pick your YouTube account in the browser and click **Allow**.
+**2. Connect your channel.** Type **`/yt-setup`** in Claude Code, pick your YouTube account in the browser and click **Allow**. To change channels later, type **`/yt-setup switch`** and pick another account; to sign out, type **`/yt-disconnect`**.
 
 **3. Ask.** *"Take a snapshot of my channel and show me the report."*
 
